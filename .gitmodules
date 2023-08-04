@@ -1,0 +1,3 @@
+[submodule "augmenting_nlms_meco_data"]
+	path = augmenting_nlms_meco_data
+	url = git@github.com:Andrew-Wyn/augmenting_nlms_meco_data.git
