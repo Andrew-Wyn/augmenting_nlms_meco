@@ -4,3 +4,6 @@
 [submodule "attn_correlation/modules/ValueZeroing"]
 	path = attn_correlation/modules/ValueZeroing
 	url = git@github.com:lucadinidue/ValueZeroing.git
+[submodule "attn_correlation/modules/alti"]
+	path = attn_correlation/modules/alti
+	url = git@github.com:lucadinidue/alti.git
