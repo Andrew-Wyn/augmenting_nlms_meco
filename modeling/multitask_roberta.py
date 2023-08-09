@@ -91,15 +91,6 @@ class RobertaForMultiTaskTokenClassification(RobertaPreTrainedModel):
             task in tasks
         })
 
-        # self.skip_classifier = nn.Linear(config.hidden_size, 2)
-        # self.firstfix_dur_classifier = nn.Linear(config.hidden_size, 1)
-        # self.firstrun_dur_classifier = nn.Linear(config.hidden_size, 1)
-        # self.dur_classifier = nn.Linear(config.hidden_size, 1)
-        # self.firstrun_nfix_classifier = nn.Linear(config.hidden_size, 1)
-        # self.nfix_classifier = nn.Linear(config.hidden_size, 1)
-        # self.refix_classifier = nn.Linear(config.hidden_size, 2)
-        # self.reread_classifier = nn.Linear(config.hiddden_size, 2)
-
         # Initialize weights and apply final processing
         self.post_init()
 
@@ -147,8 +138,10 @@ class RobertaForMultiTaskTokenClassification(RobertaPreTrainedModel):
             if labels[task] is not None:
                 task_labels = labels[task].to(task_logits.device)
                 if task in ['skip', 'refix', 'reread']:
-                    loss_fct = BCEWithLogitsLoss()
-                    task_loss = loss_fct(task_logits, task_labels)
+                    # loss_fct = BCEWithLogitsLoss()
+                    loss_fct = CrossEntropyLoss()
+                    # task_loss = loss_fct(task_logits, task_labels)
+                    task_loss = loss_fct(task_logits.view(-1, 2), task_labels.view(-1))
                 else:
                     loss_fct = MSELoss()
                     task_loss = loss_fct(task_logits.squeeze(), task_labels.squeeze())
@@ -157,11 +150,11 @@ class RobertaForMultiTaskTokenClassification(RobertaPreTrainedModel):
                 else:
                     loss += task_loss
 
-        logits = torch.stack(logits, dim=-1)
 
-        if not return_dict:
-            output = (logits,) + outputs[2:]
-            return ((loss,) + output) if loss is not None else output
+        # if not return_dict:                               Se serve bisogna sistemare i logits perchè hanno dimensioni diverse
+        #     logits = torch.stack(logits, dim=-1)
+        #     output = (logits,) + outputs[2:]
+        #     return ((loss,) + output) if loss is not None else output
 
         return MultiTaskTokenClassifierOutput(
             loss=loss,
