@@ -21,7 +21,7 @@ from typing import Optional, Tuple, Union
 
 import torch.utils.checkpoint
 from torch import nn
-from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
+from torch.nn import BCEWithLogitsLoss, MSELoss
 from dataclasses import dataclass
 
 from transformers.utils import logging, ModelOutput
@@ -65,7 +65,8 @@ class MultiTaskTokenClassifierOutput(ModelOutput):
             heads.
     """
 
-    loss: Optional[torch.FloatTensor] = None
+    binary_loss: Optional[torch.FloatTensor] = None
+    continuous_loss: Optional[torch.FloatTensor] = None
     logits: Tuple[torch.FloatTensor] = None
     hidden_states: Optional[Tuple[torch.FloatTensor]] = None
     attentions: Optional[Tuple[torch.FloatTensor]] = None
@@ -84,10 +85,10 @@ class CamembertForMultiTaskTokenClassification(CamembertPreTrainedModel):
         self.classifier = nn.Linear(config.hidden_size, config.num_labels)
 
         # classifiers
-        tasks = ['skip', 'firstfix_dur', 'firstrun_dur', 'dur', 'firstrun_nfix', 'nfix', 'refix', 'reread']
+        self.tasks = ['skip', 'firstfix_dur', 'firstrun_dur', 'dur', 'firstrun_nfix', 'nfix', 'refix', 'reread']
         self.classifiers = nn.ModuleDict({
-            task: nn.Linear(config.hidden_size, 2 if task in ['skip', 'refix', 'reread'] else 1) for
-            task in tasks
+            task: nn.Linear(config.hidden_size, 1) for
+            task in self.tasks
         })
 
         # Initialize weights and apply final processing
@@ -128,31 +129,30 @@ class CamembertForMultiTaskTokenClassification(CamembertPreTrainedModel):
 
         sequence_output = self.dropout(sequence_output)
 
-        tasks = ['skip', 'firstfix_dur', 'firstrun_dur', 'dur', 'firstrun_nfix', 'nfix', 'refix', 'reread']
-        loss = None
+        binary_loss = 0
+        continuous_loss = 0
         logits = None
 
-        for task in tasks:
+        # TODO: mask out the output associated with not-first-token of a word
+
+        for task in self.tasks:
             task_logits = self.classifiers[task](sequence_output)
             if labels[task] is not None:
                 task_labels = labels[task].to(task_logits.device)
                 if task in ['skip', 'refix', 'reread']:
-                    loss_fct = CrossEntropyLoss()
-                    task_loss = loss_fct(task_logits.view(-1, 2), task_labels.view(-1))
+                    loss_fct = BCEWithLogitsLoss()
+                    binary_loss += loss_fct(task_logits.view(-1), task_labels.view(-1))
                 else:
                     loss_fct = MSELoss()
-                    task_loss = loss_fct(task_logits.squeeze(), task_labels.squeeze())
-                if loss is None:
-                    loss = task_loss
-                else:
-                    loss += task_loss
+                    continuous_loss += loss_fct(task_logits.view(-1), task_labels.view(-1))
 
         # if not return_dict:
         #     output = (logits,) + outputs[2:]
         #     return ((loss,) + output) if loss is not None else output
 
         return MultiTaskTokenClassifierOutput(
-            loss=loss,
+            binary_loss=binary_loss,
+            continuous_loss=continuous_loss,
             logits=logits,
             hidden_states=outputs.hidden_states,
             attentions=outputs.attentions,

@@ -1,3 +1,5 @@
+# TODO: follow the camembert.py file
+
 # CODE MODIFIED FROM https://github.com/huggingface/transformers/blob/main/src/transformers/models/roberta/modeling_roberta.py
 
 # coding=utf-8
