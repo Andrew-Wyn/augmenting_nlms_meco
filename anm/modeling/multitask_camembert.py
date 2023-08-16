@@ -1,9 +1,7 @@
-# TODO: follow the camembert.py file
-
-# CODE MODIFIED FROM https://github.com/huggingface/transformers/blob/main/src/transformers/models/roberta/modeling_roberta.py
+# CODE MODIFIED FROM https://github.com/huggingface/transformers/blob/main/src/transformers/models/camembert/modeling_camembert.py
 
 # coding=utf-8
-# Copyright 2018 The Google AI Language Team Authors and The HuggingFace Inc. team.
+# Copyright 2019 Inria, Facebook AI Research and the HuggingFace Inc. team.
 # Copyright (c) 2018, NVIDIA CORPORATION.  All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,34 +15,32 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""PyTorch RoBERTa model."""
+"""PyTorch CamemBERT model."""
 
 from typing import Optional, Tuple, Union
 
 import torch.utils.checkpoint
 from torch import nn
-import torch
-from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
+from torch.nn import BCEWithLogitsLoss, MSELoss
 from dataclasses import dataclass
 
 from transformers.utils import logging, ModelOutput
 
-from transformers import RobertaPreTrainedModel, RobertaModel
+from transformers import CamembertPreTrainedModel, CamembertModel
+
 
 logger = logging.get_logger(__name__)
 
-_CHECKPOINT_FOR_DOC = "roberta-base"
-_CONFIG_FOR_DOC = "RobertaConfig"
+_CHECKPOINT_FOR_DOC = "camembert-base"
+_CONFIG_FOR_DOC = "CamembertConfig"
 
-ROBERTA_PRETRAINED_MODEL_ARCHIVE_LIST = [
-    "roberta-base",
-    "roberta-large",
-    "roberta-large-mnli",
-    "distilroberta-base",
-    "roberta-base-openai-detector",
-    "roberta-large-openai-detector",
-    # See all RoBERTa models at https://huggingface.co/models?filter=roberta
+CAMEMBERT_PRETRAINED_MODEL_ARCHIVE_LIST = [
+    "camembert-base",
+    "Musixmatch/umberto-commoncrawl-cased-v1",
+    "Musixmatch/umberto-wikipedia-uncased-v1",
+    # See all CamemBERT models at https://huggingface.co/models?filter=camembert
 ]
+
 
 @dataclass
 class MultiTaskTokenClassifierOutput(ModelOutput):
@@ -69,50 +65,55 @@ class MultiTaskTokenClassifierOutput(ModelOutput):
             heads.
     """
 
-    loss: Optional[torch.FloatTensor] = None
+    binary_loss: Optional[torch.FloatTensor] = None
+    continuous_loss: Optional[torch.FloatTensor] = None
     logits: Tuple[torch.FloatTensor] = None
     hidden_states: Optional[Tuple[torch.FloatTensor]] = None
     attentions: Optional[Tuple[torch.FloatTensor]] = None
 
 
-class RobertaForMultiTaskTokenClassification(RobertaPreTrainedModel):
+# Copied from transformers.models.roberta.modeling_roberta.RobertaForTokenClassification with Roberta->Camembert, ROBERTA->CAMEMBERT
+class CamembertForMultiTaskTokenClassification(CamembertPreTrainedModel):
     def __init__(self, config):
         super().__init__(config)
 
-        self.roberta = RobertaModel(config, add_pooling_layer=False)
+        self.roberta = CamembertModel(config, add_pooling_layer=False)
         classifier_dropout = (
             config.classifier_dropout if config.classifier_dropout is not None else config.hidden_dropout_prob
         )
         self.dropout = nn.Dropout(classifier_dropout)
+        self.classifier = nn.Linear(config.hidden_size, config.num_labels)
 
         # classifiers
-        tasks = ['skip', 'firstfix.dur', 'firstrun.dur', 'dur', 'firstrun.nfix', 'nfix', 'refix', 'reread']
+        self.tasks = ['skip', 'firstfix_dur', 'firstrun_dur', 'dur', 'firstrun_nfix', 'nfix', 'refix', 'reread']
         self.classifiers = nn.ModuleDict({
-            task: nn.Linear(config.hidden_size, 2 if task in ['skip', 'refix', 'reread'] else 1) for
-            task in tasks
+            task: nn.Linear(config.hidden_size, 1) for
+            task in self.tasks
         })
 
         # Initialize weights and apply final processing
         self.post_init()
 
     def forward(
-            self,
-            input_ids: Optional[torch.LongTensor] = None,
-            attention_mask: Optional[torch.FloatTensor] = None,
-            token_type_ids: Optional[torch.LongTensor] = None,
-            position_ids: Optional[torch.LongTensor] = None,
-            head_mask: Optional[torch.FloatTensor] = None,
-            inputs_embeds: Optional[torch.FloatTensor] = None,
-            labels: Optional[torch.LongTensor] = None, # cambiare tipo
-            output_attentions: Optional[bool] = None,
-            output_hidden_states: Optional[bool] = None,
-            return_dict: Optional[bool] = None,
+        self,
+        input_ids: Optional[torch.LongTensor] = None,
+        attention_mask: Optional[torch.FloatTensor] = None,
+        token_type_ids: Optional[torch.LongTensor] = None,
+        position_ids: Optional[torch.LongTensor] = None,
+        head_mask: Optional[torch.FloatTensor] = None,
+        inputs_embeds: Optional[torch.FloatTensor] = None,
+        labels: Optional[torch.LongTensor] = None,
+        output_attentions: Optional[bool] = None,
+        output_hidden_states: Optional[bool] = None,
+        return_dict: Optional[bool] = None,
     ) -> Union[Tuple[torch.Tensor], MultiTaskTokenClassifierOutput]:
         r"""
         labels (`torch.LongTensor` of shape `(batch_size, sequence_length)`, *optional*):
             Labels for computing the token classification loss. Indices should be in `[0, ..., config.num_labels - 1]`.
         """
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+
+        print(input_ids)
 
         outputs = self.roberta(
             input_ids,
@@ -127,38 +128,33 @@ class RobertaForMultiTaskTokenClassification(RobertaPreTrainedModel):
         )
 
         sequence_output = outputs[0]
+
         sequence_output = self.dropout(sequence_output)
 
-        tasks = ['skip', 'firstfix_dur', 'firstrun_dur', 'dur', 'firstrun_nfix', 'nfix', 'refix', 'reread']
-        loss = None
-        logits = list()
+        binary_loss = 0
+        continuous_loss = 0
+        logits = None
 
-        for task in tasks:
+        # TODO: mask out the output associated with not-first-token of a word
+
+        for task in self.tasks:
             task_logits = self.classifiers[task](sequence_output)
-            logits.append(task_logits.squeeze())
             if labels[task] is not None:
                 task_labels = labels[task].to(task_logits.device)
                 if task in ['skip', 'refix', 'reread']:
-                    # loss_fct = BCEWithLogitsLoss()
-                    loss_fct = CrossEntropyLoss()
-                    # task_loss = loss_fct(task_logits, task_labels)
-                    task_loss = loss_fct(task_logits.view(-1), task_labels.view(-1))
+                    loss_fct = BCEWithLogitsLoss()
+                    binary_loss += loss_fct(task_logits.view(-1), task_labels.view(-1))
                 else:
                     loss_fct = MSELoss()
-                    task_loss = torch.sqrt(loss_fct(task_logits.view(-1), task_labels.view(-1)))
-                if loss is None:
-                    loss = task_loss
-                else:
-                    loss += task_loss
+                    continuous_loss += loss_fct(task_logits.view(-1), task_labels.view(-1))
 
-
-        # if not return_dict:                               Se serve bisogna sistemare i logits perchè hanno dimensioni diverse
-        #     logits = torch.stack(logits, dim=-1)
+        # if not return_dict:
         #     output = (logits,) + outputs[2:]
         #     return ((loss,) + output) if loss is not None else output
 
         return MultiTaskTokenClassifierOutput(
-            loss=loss,
+            binary_loss=binary_loss,
+            continuous_loss=continuous_loss,
             logits=logits,
             hidden_states=outputs.hidden_states,
             attentions=outputs.attentions,

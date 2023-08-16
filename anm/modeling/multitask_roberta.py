@@ -20,10 +20,11 @@
 """PyTorch RoBERTa model."""
 
 from typing import Optional, Tuple, Union
+from anm.utils import mask_loss
 
+import torch
 import torch.utils.checkpoint
 from torch import nn
-import torch
 from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
 from dataclasses import dataclass
 
@@ -69,7 +70,8 @@ class MultiTaskTokenClassifierOutput(ModelOutput):
             heads.
     """
 
-    loss: Optional[torch.FloatTensor] = None
+    binary_loss: Optional[torch.FloatTensor] = None
+    continuous_loss: Optional[torch.FloatTensor] = None
     logits: Tuple[torch.FloatTensor] = None
     hidden_states: Optional[Tuple[torch.FloatTensor]] = None
     attentions: Optional[Tuple[torch.FloatTensor]] = None
@@ -86,10 +88,10 @@ class RobertaForMultiTaskTokenClassification(RobertaPreTrainedModel):
         self.dropout = nn.Dropout(classifier_dropout)
 
         # classifiers
-        tasks = ['skip', 'firstfix.dur', 'firstrun.dur', 'dur', 'firstrun.nfix', 'nfix', 'refix', 'reread']
+        self.tasks = ['skip', 'firstfix-dur', 'firstrun-dur', 'dur', 'firstrun-nfix', 'nfix', 'refix', 'reread']
         self.classifiers = nn.ModuleDict({
-            task: nn.Linear(config.hidden_size, 2 if task in ['skip', 'refix', 'reread'] else 1) for
-            task in tasks
+            task: nn.Linear(config.hidden_size, 1) for
+            task in self.tasks
         })
 
         # Initialize weights and apply final processing
@@ -129,28 +131,24 @@ class RobertaForMultiTaskTokenClassification(RobertaPreTrainedModel):
         sequence_output = outputs[0]
         sequence_output = self.dropout(sequence_output)
 
-        tasks = ['skip', 'firstfix_dur', 'firstrun_dur', 'dur', 'firstrun_nfix', 'nfix', 'refix', 'reread']
-        loss = None
-        logits = list()
+        binary_loss = 0
+        continuous_loss = 0
+        logits = None
 
-        for task in tasks:
+        for task in self.tasks:
             task_logits = self.classifiers[task](sequence_output)
-            logits.append(task_logits.squeeze())
             if labels[task] is not None:
                 task_labels = labels[task].to(task_logits.device)
+                # TODO: mask out the output associated with not-first-token of a word
+                # ERROR: check dimensionalities
+                output_, target_ = mask_loss(task_logits, task_labels, -100)
+
                 if task in ['skip', 'refix', 'reread']:
-                    # loss_fct = BCEWithLogitsLoss()
-                    loss_fct = CrossEntropyLoss()
-                    # task_loss = loss_fct(task_logits, task_labels)
-                    task_loss = loss_fct(task_logits.view(-1), task_labels.view(-1))
+                    loss_fct = BCEWithLogitsLoss()
+                    binary_loss += loss_fct(output_, target_)
                 else:
                     loss_fct = MSELoss()
-                    task_loss = torch.sqrt(loss_fct(task_logits.view(-1), task_labels.view(-1)))
-                if loss is None:
-                    loss = task_loss
-                else:
-                    loss += task_loss
-
+                    continuous_loss += torch.sqrt(loss_fct(output_, target_))
 
         # if not return_dict:                               Se serve bisogna sistemare i logits perchè hanno dimensioni diverse
         #     logits = torch.stack(logits, dim=-1)
@@ -158,7 +156,8 @@ class RobertaForMultiTaskTokenClassification(RobertaPreTrainedModel):
         #     return ((loss,) + output) if loss is not None else output
 
         return MultiTaskTokenClassifierOutput(
-            loss=loss,
+            binary_loss=binary_loss,
+            continuous_loss=continuous_loss,
             logits=logits,
             hidden_states=outputs.hidden_states,
             attentions=outputs.attentions,

@@ -7,11 +7,6 @@ from sklearn.preprocessing import MinMaxScaler
 import numpy as np
 # TODO: wait to merge issue#4
 # from modeling.multioutput_xlm_roberta import XLMRobertaMultiTaskForSequenceRegression
-from transformers import (
-    AutoConfig,
-    AutoModelForTokenClassification,
-)
-
 
 CONFIG = {
     "version": 1,
@@ -171,3 +166,16 @@ def normalize_contributions(model_contributions,scaling='minmax',resultant_norm=
         else:
             print('No normalization selected!')
     return normalized_model_contributions
+
+
+def mask_loss(b_output, b_target, target_pad):
+    """
+    Masks the pad tokens of by setting the corresponding output and target tokens equal.
+    """
+    active_outputs = b_output.view(-1)
+    active_targets = b_target.view(-1)
+    active_mask = active_targets == target_pad
+
+    active_outputs = torch.where(active_mask, active_targets, active_outputs)
+
+    return active_outputs, active_targets

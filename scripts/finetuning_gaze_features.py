@@ -2,106 +2,46 @@ import os
 import sys
 sys.path.append(os.path.abspath(".")) # run the scrpits file from the parent folder
 
-from anm.gaze_dataloader.dataloader import GazeDataLoader
-from anm.gaze_dataloader.dataset import GazeDataset
-from anm.gaze_training.cv import cross_validation
-from anm.gaze_training.trainer import GazeTrainer
-import torch
-import json
-from anm.utils import create_finetuning_optimizer, create_scheduler, Config, minMaxScaling, load_model_from_hf
-from transformers import (
-    AutoTokenizer,
-    set_seed,
-)
-
-from torch.utils.tensorboard import SummaryWriter
-import argparse
-
+# from anm.modeling.multitask_camembert import CamembertForMultiTaskTokenClassification
+from anm.modeling.multitask_roberta import RobertaForMultiTaskTokenClassification
+from anm.gaze_dataloader.datacollator import DataCollatorForMultiTaskTokenClassification
+from transformers import RobertaTokenizerFast
+from torch.utils.data import DataLoader
+import pandas as pd
+import numpy as np
+from anm.gaze_dataloader.dataset import _create_senteces_from_data, create_tokenize_and_align_labels_map
 
 # TODO: capire perche se non setto cache_dir in AutoTokenizer
 # non usa come cache la directory specificata
 CACHE_DIR = f"{os.getcwd()}/.hf_cache/"
 # change Transformer cache variable
 os.environ['TRANSFORMERS_CACHE'] = CACHE_DIR
-DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-def main():
-    parser = argparse.ArgumentParser(description='Fine-tune a XLM-Roberta-base following config json passed')
-    parser.add_argument('-c' ,'--config', dest='config_file', action='store',
-                        help=f'Relative path of a .json file, that contain parameters for the fine-tune script')
-    parser.add_argument('-o', '--output-dir', dest='output_dir', action='store',
-                        help=f'Relative path of output directory')
-    parser.add_argument('-d', '--dataset', dest='dataset', action='store',
-                        help=f'Relative path of dataset folder, containing the .csv file')
+model_name = 'roberta-base'
+model = RobertaForMultiTaskTokenClassification.from_pretrained(model_name)
+tokenizer = RobertaTokenizerFast.from_pretrained("roberta-base", add_prefix_space=True)
 
-    # Read the script's argumenents
-    args = parser.parse_args()
-    config_file = args.config_file
+data = pd.read_csv("augmenting_nlms_meco_data/en/en_6_dataset.csv", index_col=0)
+gaze_dataset = _create_senteces_from_data(data)
 
-    # Load the .json configuration file
-    cf = Config.load_json(config_file)
+features = [col_name for col_name in gaze_dataset.column_names if col_name.startswith('label_')]
 
-    # set seed
-    set_seed(cf.seed)
+tokenized_dataset = gaze_dataset.map(
+            create_tokenize_and_align_labels_map(tokenizer, features),
+            batched=True,
+            remove_columns=gaze_dataset.column_names,
+            # desc="Running tokenizer on dataset",
+)
 
-    # check if the output directory exists, if not create it!
-    if not os.path.exists(args.output_dir):
-        os.makedirs(args.output_dir)
+print('tokens: ', tokenizer.convert_ids_to_tokens(tokenized_dataset[0]['input_ids']))
+for key in tokenized_dataset[0].keys():
+    print(f'{key}:', tokenized_dataset[0][key])
 
-    # Writer
-    writer = SummaryWriter(args.output_dir)
+data_collator = DataCollatorForMultiTaskTokenClassification(tokenizer)
+dataloader = DataLoader(tokenized_dataset, shuffle=True, collate_fn=data_collator, batch_size=2)
 
-    # Tokenizer
-    tokenizer = AutoTokenizer.from_pretrained(cf.model_name, cache_dir=CACHE_DIR)
-
-    # Dataset
-    d = GazeDataset(cf, tokenizer, args.dataset)
-    d.read_pipeline()
-    d.randomize_data()
-
-    print(tokenizer.convert_tokens_to_string(tokenizer.convert_ids_to_tokens(d.text_inputs[0])))
-    print(d.targets)
-
-    exit()
-
-    # K-fold cross-validation
-    train_losses, test_losses = cross_validation(cf, d, writer, DEVICE, k_folds=cf.k_folds)
-
-    print("Train averaged losses:")
-    print(train_losses)
-
-    print("Test averaged losses:")
-    print(test_losses)
-
-    # Retrain over all dataset
-
-    # min max scaler the targets
-    d.targets = minMaxScaling(d.targets, feature_max=d.feature_max, pad_token=d.target_pad)
-
-    # create the dataloader
-    train_dl = GazeDataLoader(cf, d.text_inputs, d.targets, d.masks, d.target_pad, mode="train")
-
-    # Model
-    model = load_model_from_hf(cf.model_name, not cf.random_weights, cf.multiregressor, d.d_out)
-
-    # Optimizer
-    optim = create_finetuning_optimizer(cf, model)
-
-    # Scheduler
-    scheduler = create_scheduler(cf, optim, train_dl)
-
-    # Trainer
-    trainer = GazeTrainer(cf, model, train_dl, optim, scheduler, f"Final_Training",
-                                DEVICE, writer=writer)
-    trainer.train(save_model=True, output_dir=args.output_dir)
-
-    loss_tr = dict()
-
-    for key, metric in trainer.tester.train_metrics.items():
-        loss_tr[key] = metric
-
-    with open(f"{args.output_dir}/finetuning_results.json", 'w') as f:
-        json.dump({"losses_tr" : train_losses, "losses_ts" : test_losses, "final_training" : loss_tr}, f)
-
-if __name__ == "__main__":
-    main()
+for step, batch in enumerate(dataloader):
+    print(batch)
+    outputs = model(**batch)
+    print(outputs)
+    break
