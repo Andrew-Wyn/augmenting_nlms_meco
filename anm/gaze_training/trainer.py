@@ -39,8 +39,11 @@ class Trainer(ABC):
             for batch in self.train_dl:
                 it += 1
 
-                loss = self.train_one_step(batch)
+                loss, binary_loss, continuous_loss = self.train_one_step(batch)
+
                 self.writer.add_scalar(f"{self.task}/train/loss_step_wise", loss, it)
+                self.writer.add_scalar(f"{self.task}/train/binary_loss_step_wise", binary_loss, it)
+                self.writer.add_scalar(f"{self.task}/train/continuous_loss_step_wise", continuous_loss, it)
 
             self.tester.evaluate()
 
@@ -51,9 +54,10 @@ class Trainer(ABC):
                 for key, metric in self.tester.test_metrics.items():
                     self.writer.add_scalar(f"{self.task}/test/{key}", metric, it // n_batches_one_epoch)
 
-        LOGGER.info(f"Training Done -> Train Loss_all : {self.tester.train_metrics['loss_all']}")
-        if not self.tester.test_dl is None:
-            LOGGER.info(f"Training Done -> Test Loss_all : {self.tester.test_metrics['loss_all']}")
+        # TODO: add combined loss
+        # LOGGER.info(f"Training Done -> Train Loss_all : {self.tester.train_metrics['loss_all']}")
+        # if not self.tester.test_dl is None:
+        #     LOGGER.info(f"Training Done -> Test Loss_all : {self.tester.test_metrics['loss_all']}")
 
         # save the model after last epoch
         if save_model:
@@ -74,31 +78,32 @@ class Trainer(ABC):
 
 class GazeTrainer(Trainer):
     def __init__(self, cf, model, train_dl, optim, scheduler,
-                 task, device, writer, test_dl=None):
+                 task, device, writer, test_dl=None, lambda_1=0.001, lambda_2=1):
         tester = GazeTester(model, device, task, train_dl, test_dl)
         super().__init__(cf, model, train_dl, tester, task, device, writer)
 
         self.optim = optim
         self.scheduler = scheduler
         self.max_grad_norm = cf.max_grad_norm
-        self.target_pad = train_dl.target_pad
-
-        self.criterion = nn.MSELoss(reduction="mean")
+        self.lambda_2 = lambda_2
+        self.lambda_1 = lambda_1
 
     def train_one_step(self, batch):
         self.model.zero_grad()
 
-        b_input, b_target, b_mask = batch
-        b_input = b_input.to(self.device)
-        b_target = b_target.to(self.device)
-        b_mask = b_mask.to(self.device)
-
         # forward pass over one batch
-        b_output = self.model(input_ids=b_input, attention_mask=b_mask)[0]
-        
+        model_output = self.model(**batch)
+
         # compute loss
-        active_outputs, active_targets = mask_mse_loss(b_output, b_target, self.target_pad, self.model.num_labels)
-        loss = self.criterion(active_outputs, active_targets)
+        binary_loss_item = 0
+        for _, l in model_output.binary_loss.items():
+            binary_loss_item += l
+
+        continuous_loss_item = 0
+        for _, l in model_output.continuous_loss.items():
+            continuous_loss_item += l
+
+        loss = self.lambda_1*binary_loss_item + self.lambda_2*continuous_loss_item
 
         # backward pass over one batch
         loss.backward()
@@ -109,4 +114,4 @@ class GazeTrainer(Trainer):
         self.optim.step()
         self.scheduler.step()
 
-        return loss.item()
+        return loss.item(), binary_loss_item.item(), continuous_loss_item.item()

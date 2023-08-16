@@ -20,12 +20,12 @@
 """PyTorch RoBERTa model."""
 
 from typing import Optional, Tuple, Union
-from anm.utils import mask_loss
+from anm.modeling.utils import mask_loss
 
 import torch
 import torch.utils.checkpoint
 from torch import nn
-from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
+from torch.nn import BCEWithLogitsLoss, MSELoss
 from dataclasses import dataclass
 
 from transformers.utils import logging, ModelOutput
@@ -70,8 +70,8 @@ class MultiTaskTokenClassifierOutput(ModelOutput):
             heads.
     """
 
-    binary_loss: Optional[torch.FloatTensor] = None
-    continuous_loss: Optional[torch.FloatTensor] = None
+    binary_loss: Optional[dict] = None
+    continuous_loss: Optional[dict] = None
     logits: Tuple[torch.FloatTensor] = None
     hidden_states: Optional[Tuple[torch.FloatTensor]] = None
     attentions: Optional[Tuple[torch.FloatTensor]] = None
@@ -131,8 +131,8 @@ class RobertaForMultiTaskTokenClassification(RobertaPreTrainedModel):
         sequence_output = outputs[0]
         sequence_output = self.dropout(sequence_output)
 
-        binary_loss = 0
-        continuous_loss = 0
+        binary_loss = {}
+        continuous_loss = {}
         logits = None
 
         for task in self.tasks:
@@ -145,10 +145,10 @@ class RobertaForMultiTaskTokenClassification(RobertaPreTrainedModel):
 
                 if task in ['skip', 'refix', 'reread']:
                     loss_fct = BCEWithLogitsLoss()
-                    binary_loss += loss_fct(output_, target_)
+                    binary_loss[task] = loss_fct(output_, target_)
                 else:
                     loss_fct = MSELoss()
-                    continuous_loss += torch.sqrt(loss_fct(output_, target_))
+                    continuous_loss[task] = torch.sqrt(loss_fct(output_, target_))
 
         # if not return_dict:                               Se serve bisogna sistemare i logits perchè hanno dimensioni diverse
         #     logits = torch.stack(logits, dim=-1)

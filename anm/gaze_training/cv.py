@@ -1,54 +1,41 @@
 import numpy as np
 from collections import defaultdict
 from anm.utils import LOGGER, create_finetuning_optimizer, create_scheduler, minMaxScaling, load_model_from_hf
-from anm.gaze_dataloader.dataloader import GazeDataLoader
+from torch.utils.data import DataLoader
 from anm.gaze_training.trainer import GazeTrainer
+from sklearn.model_selection import StratifiedKFold
+from transformers import AdamW
 
 
-def cross_validation(cf, d, writer, DEVICE, k_folds=10):
+def cross_validation(cf, dataset, data_collator, DEVICE, writer, k_folds=10):
     """
     Perform a k-fold cross-validation
     """
 
-    l = len(d.text_inputs)
-    l_ts = l//k_folds
+    folds = StratifiedKFold(n_splits=k_folds)
+
+    splits = folds.split(np.zeros(dataset.num_rows))
 
     loss_tr_mean = defaultdict(int)
     loss_ts_mean = defaultdict(int)
 
-    for k in range(k_folds):
+    for k, (train_idx, test_idx) in enumerate(splits):
         # cicle over folds, for every fold create train_d, valid_d
-        if k != k_folds-1: # exclude the k-th part from the validation
-            train_inputs = np.append(d.text_inputs[:(k)*l_ts], d.text_inputs[(k+1)*l_ts:], axis=0)
-            train_targets = np.append(d.targets[:(k)*l_ts], d.targets[(k+1)*l_ts:], axis=0)
-            train_masks = np.append(d.masks[:(k)*l_ts], d.masks[(k+1)*l_ts:], axis=0)
-            test_inputs = d.text_inputs[k*l_ts:(k+1)*l_ts]
-            test_targets = d.targets[k*l_ts:(k+1)*l_ts]
-            test_masks = d.masks[k*l_ts:(k+1)*l_ts]
-
-        else: # last fold clausole
-            train_inputs = d.text_inputs[:k*l_ts]
-            train_targets = d.targets[:k*l_ts]
-            train_masks = d.masks[:k*l_ts]
-            test_inputs = d.text_inputs[k*l_ts:]
-            test_targets = d.targets[k*l_ts:]
-            test_masks = d.masks[k*l_ts:]
-
-        LOGGER.info(f"Train data: {len(train_inputs)}")
-        LOGGER.info(f"Test data: {len(test_inputs)}")
-
-        # min max scaler the targets
-        train_targets, test_targets = minMaxScaling(train_targets, test_targets, d.feature_max)
 
         # create the dataloader
-        train_dl = GazeDataLoader(cf, train_inputs, train_targets, train_masks, d.target_pad, mode="train")
-        test_dl = GazeDataLoader(cf, test_inputs, test_targets, test_masks, d.target_pad, mode="test")
+        # train_dl
+        train_ds = dataset.select(train_idx)
+        train_dl = DataLoader(train_ds, shuffle=True, collate_fn=data_collator, batch_size=cf.train_bs)
+
+        # test_dl
+        test_ds = dataset.select(test_idx)
+        test_dl = DataLoader(test_ds, shuffle=True, collate_fn=data_collator, batch_size=cf.test_bs)
 
         # Model
-        model = load_model_from_hf(cf.model_name, not cf.random_weights, cf.multiregressor, d.d_out)
+        model = load_model_from_hf(cf.model_name, cf.pretrained)
 
         # optimizer
-        optim = create_finetuning_optimizer(cf, model)
+        optim = AdamW(model.parameters(), lr=cf.lr, eps=cf.eps)
 
         # scheduler
         scheduler = create_scheduler(cf, optim, train_dl)

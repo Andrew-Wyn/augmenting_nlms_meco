@@ -4,6 +4,7 @@ import logging.config
 import torch.nn.functional as F
 import json
 from sklearn.preprocessing import MinMaxScaler
+from anm.modeling.multitask_roberta import RobertaForMultiTaskTokenClassification
 import numpy as np
 # TODO: wait to merge issue#4
 # from modeling.multioutput_xlm_roberta import XLMRobertaMultiTaskForSequenceRegression
@@ -114,7 +115,9 @@ def minMaxScaling(train_targets, test_targets=None, feature_max=1, pad_token=-1)
     return train_targets_ret
 
 
-def load_model_from_hf(model_name, pretrained, multiregressor, d_out=8):
+def load_model_from_hf(model_name, pretrained):
+
+    return RobertaForMultiTaskTokenClassification.from_pretrained(model_name)
 
     # Model
     LOGGER.info("Initiating model ...")
@@ -166,16 +169,3 @@ def normalize_contributions(model_contributions,scaling='minmax',resultant_norm=
         else:
             print('No normalization selected!')
     return normalized_model_contributions
-
-
-def mask_loss(b_output, b_target, target_pad):
-    """
-    Masks the pad tokens of by setting the corresponding output and target tokens equal.
-    """
-    active_outputs = b_output.view(-1)
-    active_targets = b_target.view(-1)
-    active_mask = active_targets == target_pad
-
-    active_outputs = torch.where(active_mask, active_targets, active_outputs)
-
-    return active_outputs, active_targets
