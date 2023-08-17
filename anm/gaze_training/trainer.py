@@ -39,11 +39,9 @@ class Trainer(ABC):
             for batch in self.train_dl:
                 it += 1
 
-                loss, binary_loss, continuous_loss = self.train_one_step(batch)
+                loss = self.train_one_step(batch)
 
                 self.writer.add_scalar(f"{self.task}/train/loss_step_wise", loss, it)
-                self.writer.add_scalar(f"{self.task}/train/binary_loss_step_wise", binary_loss, it)
-                self.writer.add_scalar(f"{self.task}/train/continuous_loss_step_wise", continuous_loss, it)
 
             self.tester.evaluate()
 
@@ -94,16 +92,12 @@ class GazeTrainer(Trainer):
         # forward pass over one batch
         model_output = self.model(**batch)
 
-        # compute loss
-        binary_loss_item = 0
-        for _, l in model_output.binary_loss.items():
-            binary_loss_item += l
+        loss = 0
 
-        continuous_loss_item = 0
-        for _, l in model_output.continuous_loss.items():
-            continuous_loss_item += l
+        for l in model_output.loss.values():
+            loss += l
 
-        loss = self.lambda_1*binary_loss_item + self.lambda_2*continuous_loss_item
+        loss /= len(model_output.loss)
 
         # backward pass over one batch
         loss.backward()
@@ -114,4 +108,4 @@ class GazeTrainer(Trainer):
         self.optim.step()
         self.scheduler.step()
 
-        return loss.item(), binary_loss_item.item(), continuous_loss_item.item()
+        return loss.item()

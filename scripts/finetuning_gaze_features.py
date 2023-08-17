@@ -52,9 +52,14 @@ def main():
     # check if the output directory exists, if not create it!
     if not os.path.exists(args.output_dir):
         os.makedirs(args.output_dir)
+    
+    tf_logs_dir = args.output_dir+"/tf_logs"
+
+    if not os.path.exists(tf_logs_dir):
+        os.makedirs(tf_logs_dir)
 
     # Writer
-    writer = SummaryWriter(args.output_dir)
+    writer = SummaryWriter(tf_logs_dir)
 
     tokenizer = AutoTokenizer.from_pretrained(cf.model_name, add_prefix_space=True)
 

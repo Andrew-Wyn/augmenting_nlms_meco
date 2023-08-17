@@ -33,20 +33,16 @@ class GazeTester(Tester):
         self.model.eval()
 
         with torch.no_grad():
-            loss = 0
-
             for batch in dl:
                 model_output = self.model(**batch)
 
-                for t, l in model_output.binary_loss.items():
-                    metrics[t] += l
+                for t, l in model_output.loss.items():
+                    metrics["mse_"+t] += l
 
-                for t, l in model_output.continuous_loss.items():
-                    metrics[t] += l
+                for t, l in model_output.mae_loss.items():
+                    metrics["mae_"+t] += l
 
             num_batches = len(dl)
             
             for t, l in metrics.items():
                 metrics[t] = l/num_batches
-
-        # TODO: add combined loss
