@@ -6,6 +6,7 @@ sys.path.append(os.path.abspath(".")) # run the scrpits file from the parent fo
 from anm.modeling.multitask_roberta import RobertaForMultiTaskTokenClassification
 from anm.gaze_dataloader.datacollator import DataCollatorForMultiTaskTokenClassification
 from anm.gaze_training.trainer import GazeTrainer
+from anm.gaze_dataloader.dataset import minmax_preprocessing
 from anm.utils import Config, load_model_from_hf, create_scheduler
 from transformers import AdamW
 from transformers import RobertaTokenizerFast
@@ -60,21 +61,7 @@ def main():
     data = pd.read_csv("augmenting_nlms_meco_data/en/en_6_dataset.csv", index_col=0)
     gaze_dataset = _create_senteces_from_data(data)
 
-    features = [col_name for col_name in gaze_dataset.column_names if col_name.startswith('label_')]
-
-    tokenized_dataset = gaze_dataset.map(
-                create_tokenize_and_align_labels_map(tokenizer, features),
-                batched=True,
-                remove_columns=gaze_dataset.column_names,
-                # desc="Running tokenizer on dataset",
-    )
-
-    # print('tokens: ', tokenizer.convert_ids_to_tokens(tokenized_dataset[0]['input_ids']))
-    # for key in tokenized_dataset[0].keys():
-    #     print(f'{key}:', tokenized_dataset[0][key])
-
-    data_collator = DataCollatorForMultiTaskTokenClassification(tokenizer)
-    dataloader = DataLoader(tokenized_dataset, shuffle=True, collate_fn=data_collator, batch_size=cf.train_bs)
+    dataloader = minmax_preprocessing(cf, gaze_dataset, tokenizer)
 
     model = load_model_from_hf(cf.model_name, cf.pretrained)
 

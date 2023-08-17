@@ -1,6 +1,8 @@
 import numpy as np
 from datasets import Dataset
-
+from sklearn.preprocessing import MinMaxScaler
+from anm.gaze_dataloader.datacollator import DataCollatorForMultiTaskTokenClassification
+from torch.utils.data import DataLoader
 
 def _create_senteces_from_data(data):
     dropping_cols = {"sentnum", "ia", "lang", "trialid", "ianum", "uniform_id", "sentence_id"}
@@ -69,3 +71,77 @@ def create_tokenize_and_align_labels_map(tokenizer, features):
         return tokenized_inputs
 
     return tokenize_and_align_labels
+
+
+def _create_and_fit_sclers(dataset, features):
+    # create and fit the scalers
+
+    scalers = {}
+
+    for feat in features:
+        scaler = MinMaxScaler(feature_range=(0, 100))
+        scaler.fit(np.array([el for sen in dataset[feat] for el in sen ]).reshape(-1, 1))
+        scalers[feat] = scaler
+
+    return scalers
+
+
+def minmax_preprocessing(cf, dataset, tokenizer, train_test_split:tuple = None):
+    features = [col_name for col_name in dataset.column_names if col_name.startswith('label_')]
+
+    if not train_test_split is None:
+        train_idx, test_idx = train_test_split
+        train_ds = dataset.select(train_idx)
+        test_ds = dataset.select(test_idx)
+
+        # create and fit the scalers
+        scalers = _create_and_fit_sclers(train_ds, features)
+        # preprocessing function
+        def minmaxscaling_function(row):
+            for k, scaler in scalers.items():
+                row[k] = scaler.transform(np.array(row[k]).reshape(-1, 1)).squeeze().tolist()
+
+            return row
+
+        train_ds = train_ds.map(minmaxscaling_function)
+        test_ds = test_ds.map(minmaxscaling_function)
+
+        tokenized_dataset_train = train_ds.map(
+                    create_tokenize_and_align_labels_map(tokenizer, features),
+                    batched=True,
+                    remove_columns=train_ds.column_names,
+                    # desc="Running tokenizer on dataset",
+        )
+        tokenized_dataset_test = test_ds.map(
+                    create_tokenize_and_align_labels_map(tokenizer, features),
+                    batched=True,
+                    remove_columns=test_ds.column_names,
+                    # desc="Running tokenizer on dataset",
+        )
+
+        data_collator = DataCollatorForMultiTaskTokenClassification(tokenizer)
+        train_dl = DataLoader(tokenized_dataset_train, shuffle=True, collate_fn=data_collator, batch_size=cf.train_bs)
+        test_dl = DataLoader(tokenized_dataset_test, shuffle=True, collate_fn=data_collator, batch_size=cf.train_bs)
+        return train_dl, test_dl
+    else:
+        # create and fit the scalers
+        scalers = _create_and_fit_sclers(dataset, features)
+        # preprocessing function
+        def minmaxscaling_function(row):
+            for k, scaler in scalers.items():
+                row[k] = scaler.transform(np.array(row[k]).reshape(-1, 1)).squeeze().tolist()
+
+            return row
+
+        dataset = dataset.map(minmaxscaling_function)
+
+        tokenized_dataset = dataset.map(
+                    create_tokenize_and_align_labels_map(tokenizer, features),
+                    batched=True,
+                    remove_columns=dataset.column_names,
+                    # desc="Running tokenizer on dataset",
+        )
+
+        data_collator = DataCollatorForMultiTaskTokenClassification(tokenizer)
+        dl = DataLoader(tokenized_dataset, shuffle=True, collate_fn=data_collator, batch_size=cf.train_bs)
+        return dl

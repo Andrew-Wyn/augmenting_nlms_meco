@@ -5,9 +5,10 @@ from torch.utils.data import DataLoader
 from anm.gaze_training.trainer import GazeTrainer
 from sklearn.model_selection import StratifiedKFold
 from transformers import AdamW
+from anm.gaze_dataloader.dataset import minmax_preprocessing
 
 
-def cross_validation(cf, dataset, data_collator, DEVICE, writer, k_folds=10):
+def cross_validation(cf, dataset, tokenizer, DEVICE, writer, k_folds=10):
     """
     Perform a k-fold cross-validation
     """
@@ -24,12 +25,7 @@ def cross_validation(cf, dataset, data_collator, DEVICE, writer, k_folds=10):
 
         # create the dataloader
         # train_dl
-        train_ds = dataset.select(train_idx)
-        train_dl = DataLoader(train_ds, shuffle=True, collate_fn=data_collator, batch_size=cf.train_bs)
-
-        # test_dl
-        test_ds = dataset.select(test_idx)
-        test_dl = DataLoader(test_ds, shuffle=True, collate_fn=data_collator, batch_size=cf.test_bs)
+        train_dl, test_dl = minmax_preprocessing(cf, dataset, tokenizer, (train_idx, test_idx))
 
         # Model
         model = load_model_from_hf(cf.model_name, cf.pretrained)
