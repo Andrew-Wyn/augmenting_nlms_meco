@@ -1,7 +1,9 @@
-# CODE MODIFIED FROM https://github.com/huggingface/transformers/blob/main/src/transformers/models/camembert/modeling_camembert.py
+# TODO: follow the camembert.py file
+
+# CODE MODIFIED FROM https://github.com/huggingface/transformers/blob/main/src/transformers/models/roberta/modeling_roberta.py
 
 # coding=utf-8
-# Copyright 2019 Inria, Facebook AI Research and the HuggingFace Inc. team.
+# Copyright 2018 The Google AI Language Team Authors and The HuggingFace Inc. team.
 # Copyright (c) 2018, NVIDIA CORPORATION.  All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,39 +17,74 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""PyTorch CamemBERT model."""
+"""PyTorch RoBERTa model."""
 
 from typing import Optional, Tuple, Union
+from anm.modeling.utils import gaze_multitask_forward
 
+import torch
 import torch.utils.checkpoint
 from torch import nn
-from anm.modeling.utils import gaze_multitask_forward
+from torch.nn import MSELoss, L1Loss
 from dataclasses import dataclass
 
 from transformers.utils import logging, ModelOutput
 
-from transformers import CamembertPreTrainedModel, CamembertModel
-
+from transformers import XLMRobertaPreTrainedModel, XLMRobertaModel
 
 logger = logging.get_logger(__name__)
 
-_CHECKPOINT_FOR_DOC = "camembert-base"
-_CONFIG_FOR_DOC = "CamembertConfig"
+_CHECKPOINT_FOR_DOC = "xlm-roberta-base"
+_CONFIG_FOR_DOC = "XLMRobertaConfig"
 
-CAMEMBERT_PRETRAINED_MODEL_ARCHIVE_LIST = [
-    "camembert-base",
-    "Musixmatch/umberto-commoncrawl-cased-v1",
-    "Musixmatch/umberto-wikipedia-uncased-v1",
-    # See all CamemBERT models at https://huggingface.co/models?filter=camembert
+XLM_ROBERTA_PRETRAINED_MODEL_ARCHIVE_LIST = [
+    "xlm-roberta-base",
+    "xlm-roberta-large",
+    "xlm-roberta-large-finetuned-conll02-dutch",
+    "xlm-roberta-large-finetuned-conll02-spanish",
+    "xlm-roberta-large-finetuned-conll03-english",
+    "xlm-roberta-large-finetuned-conll03-german",
+    # See all XLM-RoBERTa models at https://huggingface.co/models?filter=xlm-roberta
 ]
 
 
-# Copied from transformers.models.roberta.modeling_roberta.RobertaForTokenClassification with Roberta->Camembert, ROBERTA->CAMEMBERT
-class CamembertForMultiTaskTokenClassification(CamembertPreTrainedModel):
+
+@dataclass
+class MultiTaskTokenClassifierOutput(ModelOutput):
+    """
+    Class for outputs of multitask token classification models.
+
+    Args:
+        loss (`torch.FloatTensor` of shape `(1,)`, *optional*, returned when `labels` is provided) :
+            Classification loss.
+        logits (`torch.FloatTensor` of shape `(batch_size, sequence_length, config.num_labels)`):
+            Classification scores (before SoftMax).
+        hidden_states (`tuple(torch.FloatTensor)`, *optional*, returned when `output_hidden_states=True` is passed or when `config.output_hidden_states=True`):
+            Tuple of `torch.FloatTensor` (one for the output of the embeddings, if the model has an embedding layer, +
+            one for the output of each layer) of shape `(batch_size, sequence_length, hidden_size)`.
+
+            Hidden-states of the model at the output of each layer plus the optional initial embedding outputs.
+        attentions (`tuple(torch.FloatTensor)`, *optional*, returned when `output_attentions=True` is passed or when `config.output_attentions=True`):
+            Tuple of `torch.FloatTensor` (one for each layer) of shape `(batch_size, num_heads, sequence_length,
+            sequence_length)`.
+
+            Attentions weights after the attention softmax, used to compute the weighted average in the self-attention
+            heads.
+    """
+
+    loss: Optional[dict] = None
+    mae_loss: Optional[dict] = None
+    logits: Tuple[torch.FloatTensor] = None
+    hidden_states: Optional[Tuple[torch.FloatTensor]] = None
+    attentions: Optional[Tuple[torch.FloatTensor]] = None
+
+
+class XLMRobertaForTokenClassification(XLMRobertaPreTrainedModel):
     def __init__(self, config):
         super().__init__(config)
+        self.num_labels = config.num_labels
 
-        self.roberta = CamembertModel(config, add_pooling_layer=False)
+        self.roberta = XLMRobertaModel(config, add_pooling_layer=False)
         classifier_dropout = (
             config.classifier_dropout if config.classifier_dropout is not None else config.hidden_dropout_prob
         )

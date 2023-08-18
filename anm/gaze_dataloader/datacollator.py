@@ -63,5 +63,4 @@ class DataCollatorForMultiTaskTokenClassification(DataCollatorForTokenClassifica
         for label_name in labels_names:
                 batch['labels'][label_name[len('label_'):]] = torch.tensor(batch_labels_dict[label_name],
                                                                            dtype=torch.float32)
-        
         return batch

@@ -20,7 +20,7 @@
 """PyTorch RoBERTa model."""
 
 from typing import Optional, Tuple, Union
-from anm.modeling.utils import mask_loss
+from anm.modeling.utils import gaze_multitask_forward
 
 import torch
 import torch.utils.checkpoint
@@ -131,26 +131,7 @@ class RobertaForMultiTaskTokenClassification(RobertaPreTrainedModel):
         sequence_output = outputs[0]
         sequence_output = self.dropout(sequence_output)
 
-        loss = {}
-        mae_loss = {}
-        logits = None
-
-        for task in self.tasks:
-            task_logits = self.classifiers[task](sequence_output)
-            if labels[task] is not None:
-                task_labels = labels[task].to(task_logits.device)
-                # TODO: mask out the output associated with not-first-token of a word
-                # ERROR: check dimensionalities
-                output_, target_ = mask_loss(task_logits, task_labels, -100)
-                
-                # MSE Loss
-                loss_fct = MSELoss()
-                loss[task] = loss_fct(output_, target_)
-
-                with torch.no_grad():
-                    # MAE Loss
-                    loss_fct = L1Loss()
-                    mae_loss[task] = loss_fct(output_, target_)
+        loss, mae_loss, logits = gaze_multitask_forward(self.tasks, self.classifiers, sequence_output, labels)
 
         # if not return_dict:                               Se serve bisogna sistemare i logits perchè hanno dimensioni diverse
         #     logits = torch.stack(logits, dim=-1)
