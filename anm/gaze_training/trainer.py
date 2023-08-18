@@ -26,6 +26,8 @@ class Trainer(ABC):
     def train(self, save_model=False, output_dir=None):
         n_batches_one_epoch = len(self.train_dl)
         n_params = sum(p.numel() for p in self.model.parameters())
+        LOGGER.info("--- Training phase ---")
+        LOGGER.info(f"Task: {self.task}")
         LOGGER.info(f"Num epochs: {self.n_epochs}")
         LOGGER.info(f"Num parameters: {n_params}")
         LOGGER.info(f"Begin training task {self.task}")

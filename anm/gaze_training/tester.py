@@ -15,7 +15,9 @@ class Tester(ABC):
         self.test_metrics = defaultdict(lambda: 0)  # key-value dictionary metric --> value
 
     def evaluate(self):
-        # LOGGER.info(f"Begin evaluation task {self.task}")
+        LOGGER.info("--- Evaluation Phase ---")
+        LOGGER.info(f"Task: {self.task}")
+        
         self.predict(self.train_dl, self.train_metrics)
 
         if not self.test_dl is None:
