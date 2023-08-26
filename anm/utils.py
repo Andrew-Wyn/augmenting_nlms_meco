@@ -5,6 +5,8 @@ import torch.nn.functional as F
 import json
 from sklearn.preprocessing import MinMaxScaler
 from anm.modeling.multitask_roberta import RobertaForMultiTaskTokenClassification
+from anm.modeling.multioutput_xlm_roberta import XLMRobertaForMultiTaskTokenClassification
+from anm.modeling.multitask_camembert import CamembertForMultiTaskTokenClassification
 import numpy as np
 # TODO: wait to merge issue#4
 # from modeling.multioutput_xlm_roberta import XLMRobertaMultiTaskForSequenceRegression
@@ -115,7 +117,7 @@ def minMaxScaling(train_targets, test_targets=None, feature_max=1, pad_token=-1)
     return train_targets_ret
 
 
-def load_model_from_hf(model_name, pretrained):
+def load_model_from_hf(model_type, model_name, pretrained):
 
     return RobertaForMultiTaskTokenClassification.from_pretrained(model_name)
 
@@ -127,7 +129,13 @@ def load_model_from_hf(model_name, pretrained):
         model = None
     else:
         LOGGER.info("Take pretrained model")
-        model = None
+
+        if model_type == "Roberta":
+            model = RobertaForMultiTaskTokenClassification.from_pretrained(model_name)
+        elif model_type == "XLM":
+            model = XLMRobertaForMultiTaskTokenClassification.from_pretrained(model_name)
+        elif model_type == "Camembert":
+            model = CamembertForMultiTaskTokenClassification.from_pretrained(model_name)
     return model
 
 

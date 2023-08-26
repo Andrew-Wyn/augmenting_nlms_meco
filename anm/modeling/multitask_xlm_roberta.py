@@ -79,7 +79,7 @@ class MultiTaskTokenClassifierOutput(ModelOutput):
     attentions: Optional[Tuple[torch.FloatTensor]] = None
 
 
-class XLMRobertaForTokenClassification(XLMRobertaPreTrainedModel):
+class XLMRobertaForMultiTaskTokenClassification(XLMRobertaPreTrainedModel):
     def __init__(self, config):
         super().__init__(config)
         self.num_labels = config.num_labels
