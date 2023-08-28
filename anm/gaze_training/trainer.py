@@ -39,6 +39,12 @@ class Trainer(ABC):
 
         for _ in tqdm(range(1, self.n_epochs + 1)):
             for batch in self.train_dl:
+                batch = {
+                    "input_ids": batch["input_ids"].to(self.device),
+                    "attention_mask": batch["attention_mask"].to(self.device),
+                    "labels": {k: v.to(self.device) for k, v in batch["labels"].items()}
+                }
+
                 it += 1
 
                 loss = self.train_one_step(batch)
@@ -63,15 +69,10 @@ class Trainer(ABC):
         if save_model:
             folder_name = os.path.join(output_dir, "model-"+self.cf.model_name+"-finetuned")
             
-            if self.cf.random_weights:
-                folder_name = folder_name + "-randomized"
-            else:
+            if self.cf.pretrained:
                 folder_name = folder_name + "-pretrained"
-
-            if self.cf.full_finetuning:
-                folder_name = folder_name + "-full"
             else:
-                folder_name = folder_name + "-notfull"
+                folder_name = folder_name + "-randomized"
 
             self.model.save_pretrained(folder_name)
 

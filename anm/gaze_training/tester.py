@@ -36,6 +36,12 @@ class GazeTester(Tester):
 
         with torch.no_grad():
             for batch in dl:
+                batch = {
+                    "input_ids": batch["input_ids"].to(self.device),
+                    "attention_mask": batch["attention_mask"].to(self.device),
+                    "labels": {k: v.to(self.device) for k, v in batch["labels"].items()}
+                }
+                
                 model_output = self.model(**batch)
 
                 for t, l in model_output.loss.items():
