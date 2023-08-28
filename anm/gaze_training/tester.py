@@ -41,14 +41,14 @@ class GazeTester(Tester):
                     "attention_mask": batch["attention_mask"].to(self.device),
                     "labels": {k: v.to(self.device) for k, v in batch["labels"].items()}
                 }
-                
+
                 model_output = self.model(**batch)
 
                 for t, l in model_output.loss.items():
-                    metrics["mse_"+t] += l
+                    metrics["mse_"+t] += l.to("cpu").numpy()
 
                 for t, l in model_output.mae_loss.items():
-                    metrics["mae_"+t] += l
+                    metrics["mae_"+t] += l.to("cpu").numpy()
 
             num_batches = len(dl)
             
