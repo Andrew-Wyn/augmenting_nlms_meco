@@ -1,5 +1,8 @@
 import torch
 from torch.nn import MSELoss, L1Loss
+from dataclasses import dataclass
+from typing import Optional, Tuple, Union
+from transformers.utils import logging, ModelOutput
 
 def mask_loss(b_output, b_target, target_pad):
     """

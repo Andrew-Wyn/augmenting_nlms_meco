@@ -5,11 +5,14 @@ import torch.nn.functional as F
 import json
 from sklearn.preprocessing import MinMaxScaler
 from anm.modeling.multitask_roberta import RobertaForMultiTaskTokenClassification
-from anm.modeling.multioutput_xlm_roberta import XLMRobertaForMultiTaskTokenClassification
+from anm.modeling.multitask_xlm_roberta import XLMRobertaForMultiTaskTokenClassification
 from anm.modeling.multitask_camembert import CamembertForMultiTaskTokenClassification
 import numpy as np
-# TODO: wait to merge issue#4
-# from modeling.multioutput_xlm_roberta import XLMRobertaMultiTaskForSequenceRegression
+from transformers import (
+    RobertaConfig,
+    XLMRobertaConfig,
+    CamembertConfig
+)
 
 CONFIG = {
     "version": 1,
@@ -118,15 +121,25 @@ def minMaxScaling(train_targets, test_targets=None, feature_max=1, pad_token=-1)
 
 
 def load_model_from_hf(model_type, model_name, pretrained):
-
-    return RobertaForMultiTaskTokenClassification.from_pretrained(model_name)
-
+    model = None
     # Model
     LOGGER.info("Initiating model ...")
+
     if not pretrained:
         # initiate model with random weights
+        # You can initialize a random BERT model using the Hugginface capabilites 
+        # (from the documentation https://huggingface.co/docs/transformers/v4.28.1/en/model_doc/bert#transformers.BertConfig)
         LOGGER.info("Take randomized model")
-        model = None
+
+        if model_type == "Roberta":
+            config = RobertaConfig()
+            model = RobertaForMultiTaskTokenClassification(config)
+        elif model_type == "XLM":
+            config = XLMRobertaConfig()
+            model = XLMRobertaForMultiTaskTokenClassification(config)
+        elif model_type == "Camembert":
+            config = CamembertConfig()
+            model = CamembertForMultiTaskTokenClassification(config)
     else:
         LOGGER.info("Take pretrained model")
 
@@ -136,6 +149,7 @@ def load_model_from_hf(model_type, model_name, pretrained):
             model = XLMRobertaForMultiTaskTokenClassification.from_pretrained(model_name)
         elif model_type == "Camembert":
             model = CamembertForMultiTaskTokenClassification.from_pretrained(model_name)
+
     return model
 
 

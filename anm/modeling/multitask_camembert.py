@@ -21,15 +21,11 @@ from typing import Optional, Tuple, Union
 
 import torch.utils.checkpoint
 from torch import nn
-from anm.modeling.utils import gaze_multitask_forward
+from anm.modeling.utils import gaze_multitask_forward, MultiTaskTokenClassifierOutput
 from dataclasses import dataclass
-
-from transformers.utils import logging, ModelOutput
 
 from transformers import CamembertPreTrainedModel, CamembertModel
 
-
-logger = logging.get_logger(__name__)
 
 _CHECKPOINT_FOR_DOC = "camembert-base"
 _CONFIG_FOR_DOC = "CamembertConfig"
