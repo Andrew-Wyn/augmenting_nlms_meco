@@ -1,7 +1,7 @@
 import torch
 from torch.nn import MSELoss, L1Loss
 from dataclasses import dataclass
-from typing import Optional, Tuple, Union
+from typing import Optional, Tuple
 from transformers.utils import logging, ModelOutput
 
 def mask_loss(b_output, b_target, target_pad):
@@ -62,12 +62,12 @@ class MultiTaskTokenClassifierOutput(ModelOutput):
             Tuple of `torch.FloatTensor` (one for each layer) of shape `(batch_size, num_heads, sequence_length,
             sequence_length)`.
 
-            Attentions weights after the attention softmax, used to compute the weighted average in the self-attention
+            Attentions weights after the attention softmax, used to compute the weighted average in the selfattention
             heads.
     """
 
-    binary_loss: Optional[torch.FloatTensor] = None
-    continuous_loss: Optional[torch.FloatTensor] = None
+    loss: Optional[dict] = None
+    mae_loss: Optional[dict] = None
     logits: Tuple[torch.FloatTensor] = None
     hidden_states: Optional[Tuple[torch.FloatTensor]] = None
     attentions: Optional[Tuple[torch.FloatTensor]] = None

@@ -22,7 +22,6 @@ from typing import Optional, Tuple, Union
 import torch.utils.checkpoint
 from torch import nn
 from anm.modeling.utils import gaze_multitask_forward, MultiTaskTokenClassifierOutput
-from dataclasses import dataclass
 
 from transformers import CamembertPreTrainedModel, CamembertModel
 
@@ -50,7 +49,7 @@ class CamembertForMultiTaskTokenClassification(CamembertPreTrainedModel):
         self.dropout = nn.Dropout(classifier_dropout)
 
         # classifiers
-        self.tasks = ['skip', 'firstfix_dur', 'firstrun_dur', 'dur', 'firstrun_nfix', 'nfix', 'refix', 'reread']
+        self.tasks = config.tasks
         self.classifiers = nn.ModuleDict({
             task: nn.Linear(config.hidden_size, 1) for
             task in self.tasks

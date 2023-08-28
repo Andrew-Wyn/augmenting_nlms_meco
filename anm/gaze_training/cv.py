@@ -32,7 +32,7 @@ def cross_validation(cf, dataset, tokenizer, DEVICE, writer, k_folds=10):
 
         LOGGER.info("Load the model from HF...")
         # Model
-        model = load_model_from_hf(cf.model_name, cf.pretrained)
+        model = load_model_from_hf(cf.model_type, cf.model_name, cf.pretrained)
 
         # optimizer
         optim = AdamW(model.parameters(), lr=cf.lr, eps=cf.eps)

@@ -9,9 +9,7 @@ from anm.modeling.multitask_xlm_roberta import XLMRobertaForMultiTaskTokenClassi
 from anm.modeling.multitask_camembert import CamembertForMultiTaskTokenClassification
 import numpy as np
 from transformers import (
-    RobertaConfig,
-    XLMRobertaConfig,
-    CamembertConfig
+    AutoConfig
 )
 
 CONFIG = {
@@ -61,6 +59,10 @@ def create_scheduler(cf, optim, dl):
 
 
 def load_model_from_hf(model_type, model_name, pretrained):
+    cf = Config.load_json("configs/modeling_configuration.json")
+    config = AutoConfig.from_pretrained(model_name)
+    config.update({"tasks": cf.tasks})
+
     model = None
     # Model
     LOGGER.info("Initiating model ...")
@@ -72,23 +74,20 @@ def load_model_from_hf(model_type, model_name, pretrained):
         LOGGER.info("Take randomized model")
 
         if model_type == "Roberta":
-            config = RobertaConfig()
             model = RobertaForMultiTaskTokenClassification(config)
         elif model_type == "XLM":
-            config = XLMRobertaConfig()
             model = XLMRobertaForMultiTaskTokenClassification(config)
         elif model_type == "Camembert":
-            config = CamembertConfig()
             model = CamembertForMultiTaskTokenClassification(config)
     else:
         LOGGER.info("Take pretrained model")
 
         if model_type == "Roberta":
-            model = RobertaForMultiTaskTokenClassification.from_pretrained(model_name)
+            model = RobertaForMultiTaskTokenClassification.from_pretrained(model_name, config=config)
         elif model_type == "XLM":
-            model = XLMRobertaForMultiTaskTokenClassification.from_pretrained(model_name)
+            model = XLMRobertaForMultiTaskTokenClassification.from_pretrained(model_name, config=config)
         elif model_type == "Camembert":
-            model = CamembertForMultiTaskTokenClassification.from_pretrained(model_name)
+            model = CamembertForMultiTaskTokenClassification.from_pretrained(model_name, config=config)
 
     return model
 

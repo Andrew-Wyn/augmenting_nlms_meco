@@ -1,0 +1,3 @@
+{
+    "tasks": ["skip", "firstfix_dur", "firstrun_dur", "dur", "firstrun_nfix", "nfix", "refix", "reread"]
+}
