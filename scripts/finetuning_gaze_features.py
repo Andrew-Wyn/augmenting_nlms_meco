@@ -70,10 +70,10 @@ def main():
 
     dataloader = minmax_preprocessing(cf, gaze_dataset, tokenizer)
 
-    model = load_model_from_hf(cf.model_name, cf.pretrained)
+    model = load_model_from_hf(cf.model_type, cf.model_name, cf.pretrained)
 
     # optimizer
-    optim = AdamW(model.parameters(), lr=cf.lr, eps=cf.eps)
+    optim = AdamW(model.parameters(), lr=cf.lr, eps=cf.eps, weight_decay=cf.weight_decay)
 
     # scheduler
     scheduler = create_scheduler(cf, optim, dataloader)
