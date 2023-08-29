@@ -5,7 +5,8 @@ from anm.gaze_dataloader.datacollator import DataCollatorForMultiTaskTokenClassi
 from torch.utils.data import DataLoader
 
 def _create_senteces_from_data(data):
-    dropping_cols = {"sentnum", "ia", "lang", "trialid", "ianum", "uniform_id", "sentence_id"}
+    dropping_cols = {"sentnum", "ia", "lang", "trialid", "ianum", "uniform_id", "sentence_id",
+                     "skip", "firstrun.nfix", "nfix", "refix", "reread"}
     
     # sort by sentnum and ianum, to avoid splitted sentences
     data = data.sort_values(by=["sentnum", "ianum"])
