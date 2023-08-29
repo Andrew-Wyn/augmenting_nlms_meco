@@ -79,15 +79,13 @@ class Trainer(ABC):
 
 class GazeTrainer(Trainer):
     def __init__(self, cf, model, train_dl, optim, scheduler,
-                 task, device, writer, test_dl=None, lambda_1=0.001, lambda_2=1):
+                 task, device, writer, test_dl=None):
         tester = GazeTester(model, device, task, train_dl, test_dl)
         super().__init__(cf, model, train_dl, tester, task, device, writer)
 
         self.optim = optim
         self.scheduler = scheduler
         self.max_grad_norm = cf.max_grad_norm
-        self.lambda_2 = lambda_2
-        self.lambda_1 = lambda_1
 
     def train_one_step(self, batch):
         self.model.zero_grad()

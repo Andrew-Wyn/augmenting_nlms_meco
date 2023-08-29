@@ -36,7 +36,6 @@ def _create_senteces_from_data(data):
 
 
 # adapted from https://github.com/huggingface/transformers/blob/main/examples/pytorch/token-classification/run_ner_no_trainer.py
-
 def create_tokenize_and_align_labels_map(tokenizer, features):
     def tokenize_and_align_labels(dataset, label_all_tokens=False):
         tokenized_inputs = tokenizer(dataset['text'], max_length=128, padding=True, truncation=True,
@@ -121,7 +120,7 @@ def minmax_preprocessing(cf, dataset, tokenizer, train_test_split:tuple = None):
 
         data_collator = DataCollatorForMultiTaskTokenClassification(tokenizer)
         train_dl = DataLoader(tokenized_dataset_train, shuffle=True, collate_fn=data_collator, batch_size=cf.train_bs)
-        test_dl = DataLoader(tokenized_dataset_test, shuffle=True, collate_fn=data_collator, batch_size=cf.train_bs)
+        test_dl = DataLoader(tokenized_dataset_test, shuffle=True, collate_fn=data_collator, batch_size=cf.test_bs)
         return train_dl, test_dl
     else:
         # create and fit the scalers

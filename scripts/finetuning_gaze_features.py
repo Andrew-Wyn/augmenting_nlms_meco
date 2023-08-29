@@ -64,7 +64,7 @@ def main():
     gaze_dataset = _create_senteces_from_data(data)
 
     # --- 10-Fold Cross Validation
-    loss_tr_mean, loss_ts_mean = cross_validation(cf, gaze_dataset, tokenizer, DEVICE, writer, k_folds=2)
+    loss_tr_mean, loss_ts_mean = cross_validation(cf, gaze_dataset, tokenizer, DEVICE, writer, k_folds=cf.k_folds)
 
     # --- Final Retraining
 
@@ -81,12 +81,12 @@ def main():
     # trainer
     trainer = GazeTrainer(cf, model, dataloader, optim, scheduler, f"Final-retraining",
                                 DEVICE, writer=writer, test_dl=None)
-    trainer.train()
+    trainer.train(True, args.output_dir)
 
     LOGGER.info ("Saving metrics...")
     # save cv and final train metrics
     with open(f"{args.output_dir}/finetuning_results.json", 'w') as f:
-        json.dump({"losses_tr" : loss_tr_mean, "losses_ts" : loss_ts_mean, "final_training" : trainer.tester.train_metrics.items()}, f)
+        json.dump({"losses_tr" : loss_tr_mean, "losses_ts" : loss_ts_mean, "final_training" : dict(trainer.tester.train_metrics)}, f)
 
 
 if __name__ == "__main__":
