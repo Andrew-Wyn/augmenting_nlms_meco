@@ -35,7 +35,7 @@ class Trainer(ABC):
         self.model.to(self.device)
         self.model.train()
 
-        it = 1
+        it = 0
 
         for _ in tqdm(range(1, self.n_epochs + 1)):
             for batch in self.train_dl:
