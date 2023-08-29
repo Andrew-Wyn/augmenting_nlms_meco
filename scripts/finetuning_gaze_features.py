@@ -73,7 +73,23 @@ def main():
     model = load_model_from_hf(cf.model_type, cf.model_name, cf.pretrained)
 
     # optimizer
-    optim = AdamW(model.parameters(), lr=cf.lr, eps=cf.eps, weight_decay=cf.weight_decay)
+    def create_finetuning_optimizer(cf, model):
+        """
+        Creates an Adam optimizer with weight decay. We can choose whether to perform full finetuning on
+        all parameters of the model or to just optimize the parameters of the final classification layer.
+        """
+        param_optimizer = list(model.named_parameters())
+        no_decay = ["bias"]
+        optimizer_grouped_parameters = [
+            {"params": [p for n, p in param_optimizer if not any(nd in n for nd in no_decay)],
+            "weight_decay_rate": cf.weight_decay},
+            {"params": [p for n, p in param_optimizer if any(nd in n for nd in no_decay)],
+            "weight_decay_rate": 0}
+        ]
+
+        return AdamW(optimizer_grouped_parameters, lr=cf.lr, eps=cf.eps)
+
+    optim = create_finetuning_optimizer(cf, model)
 
     # scheduler
     scheduler = create_scheduler(cf, optim, dataloader)
