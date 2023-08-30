@@ -61,7 +61,8 @@ def main():
     tokenizer = AutoTokenizer.from_pretrained(cf.model_name, add_prefix_space=True)
 
     data = pd.read_csv(args.dataset, index_col=0)
-    gaze_dataset = _create_senteces_from_data(data)
+    modeling_cf = Config.load_json("configs/modeling_configuration.json")
+    gaze_dataset = _create_senteces_from_data(data, modeling_cf.tasks)
 
     # --- 10-Fold Cross Validation
     loss_tr_mean, loss_ts_mean = cross_validation(cf, gaze_dataset, tokenizer, DEVICE, writer, k_folds=cf.k_folds)
