@@ -29,7 +29,7 @@ def _create_senteces_from_data(data, tasks):
     for s, t in zip(sentences, targets):
         data_list.append({
             **{"text": s,},
-            **{"label_"+str("_".join(l.split("."))) : np.array(t)[:, i] for i, l in enumerate(tasks)}
+            **{"label_"+str(l) : np.array(t)[:, i] for i, l in enumerate(tasks)}
         })
 
     return Dataset.from_list(data_list)
