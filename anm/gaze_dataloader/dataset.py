@@ -7,13 +7,13 @@ from torch.utils.data import DataLoader
 def _create_senteces_from_data(data, tasks):
     dropping_cols = set(data.columns).difference(set(tasks))
     
-    # sort by sentnum and ianum, to avoid splitted sentences
-    data = data.sort_values(by=["sentnum", "ianum"])
+    # sort by trialid, sentnum and ianum, to avoid splitted sentences
+    data = data.sort_values(by=["trialid", "sentnum", "ianum"])
 
     # create sentence_id
     data["sentence_id"] = data["trialid"].astype(int).astype(str) + data["sentnum"].astype(int).astype(str)
 
-    labels = [l for l in data.columns if l not in dropping_cols]
+    dropping_cols.add("sentence_id")
 
     word_func = lambda s: [w for w in s["ia"].values.tolist()]
 
@@ -29,7 +29,7 @@ def _create_senteces_from_data(data, tasks):
     for s, t in zip(sentences, targets):
         data_list.append({
             **{"text": s,},
-            **{"label_"+str("_".join(l.split("."))) : np.array(t)[:, i] for i, l in enumerate(labels)}
+            **{"label_"+str("_".join(l.split("."))) : np.array(t)[:, i] for i, l in enumerate(tasks)}
         })
 
     return Dataset.from_list(data_list)
