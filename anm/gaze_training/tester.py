@@ -11,8 +11,8 @@ class Tester(ABC):
         self.train_dl = train_dl
         self.test_dl = test_dl
 
-        self.train_metrics = defaultdict(lambda: 0)  # key-value dictionary metric --> value
-        self.test_metrics = defaultdict(lambda: 0)  # key-value dictionary metric --> value
+        self.train_metrics = {}  # key-value dictionary metric --> value
+        self.test_metrics = {}  # key-value dictionary metric --> value
 
     def evaluate(self):
         LOGGER.info("--- Evaluation Phase ---")
@@ -34,6 +34,8 @@ class GazeTester(Tester):
         self.model.to(self.device)
         self.model.eval()
 
+        metrics_ = defaultdict(lambda: 0)
+
         with torch.no_grad():
             for batch in dl:
                 batch = {
@@ -45,12 +47,12 @@ class GazeTester(Tester):
                 model_output = self.model(**batch)
 
                 for t, l in model_output.loss.items():
-                    metrics["mse_"+t] += l.to("cpu").numpy()
+                    metrics_["mse_"+t] += l.to("cpu").numpy()
 
                 for t, l in model_output.mae_loss.items():
-                    metrics["mae_"+t] += l.to("cpu").numpy()
+                    metrics_["mae_"+t] += l.to("cpu").numpy()
 
             num_batches = len(dl)
             
-            for t, l in metrics.items():
+            for t, l in metrics_.items():
                 metrics[t] = l/num_batches
