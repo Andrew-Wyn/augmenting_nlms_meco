@@ -4,9 +4,8 @@ from sklearn.preprocessing import MinMaxScaler
 from anm.gaze_dataloader.datacollator import DataCollatorForMultiTaskTokenClassification
 from torch.utils.data import DataLoader
 
-def _create_senteces_from_data(data):
-    dropping_cols = {"sentnum", "ia", "lang", "trialid", "ianum", "uniform_id", "sentence_id",
-                     "skip", "firstrun.nfix", "nfix", "refix", "reread"}
+def _create_senteces_from_data(data, tasks):
+    dropping_cols = set(data.columns).difference(set(tasks))
     
     # sort by sentnum and ianum, to avoid splitted sentences
     data = data.sort_values(by=["sentnum", "ianum"])
