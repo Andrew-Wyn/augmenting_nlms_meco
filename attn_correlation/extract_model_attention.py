@@ -1,82 +1,55 @@
-from utils.model_attention_utils import *
+from utils import EyeTrackingDataLoader, ValueZeroingContributionExtractor
 from transformers import AutoTokenizer
-from tqdm import tqdm
+import pandas as pd
 import argparse
 import json
 import os
 
 
-def align_to_human_tokens(model_tokens, human_tokens, split_chars):
-    model_tokens = model_tokens[1: -1]
+def align_to_original_words(model_tokens: list, original_tokens: list, subword_prefix: str) -> list:
+    model_tokens = model_tokens[1: -1]  # Remove <s> and </s>
     aligned_model_tokens = []
     alignment_ids = []
     alignment_id = -1
-    h_idx = 0
+    orig_idx = 0
     for token in model_tokens:
         alignment_id += 1
-        if token.startswith(split_chars):
-            token = token[len(split_chars):]
-        if len(aligned_model_tokens) == 0:
+        if token.startswith(subword_prefix):  # Remove the sub-word prefix
+            token = token[len(subword_prefix):]
+        if len(aligned_model_tokens) == 0:  # First token (serve?)
             aligned_model_tokens.append(token)
-        elif aligned_model_tokens[-1] + token in human_tokens[h_idx]:
-            aligned_model_tokens[-1] += token
+        elif aligned_model_tokens[-1] + token in original_tokens[
+            orig_idx]:  # We are in the second (third, fourth, ...) sub-token
+            aligned_model_tokens[-1] += token  # so we merge the token with its preceding(s)
             alignment_id -= 1
         else:
             aligned_model_tokens.append(token)
-        if aligned_model_tokens[-1] == human_tokens[h_idx]:
-            h_idx += 1
+        if aligned_model_tokens[-1] == original_tokens[
+            orig_idx]:  # A token was equal to an entire original word or a set of
+            orig_idx += 1  # sub-tokens was merged and matched an original word
         alignment_ids.append(alignment_id)
 
-    return aligned_model_tokens, alignment_ids
+    if aligned_model_tokens != original_tokens:
+        raise Exception(
+            f'Failed to align tokens.\nOriginal tokens: {original_tokens}\nObtained alignment: {aligned_model_tokens}')
+    return alignment_ids
 
 
-def load_sentences(src_dir):
-    sentences_dict = dict()
-    for file_name in os.listdir(src_dir):
-        src_path = os.path.join(src_dir, file_name)
-        for line in open(src_path):
-            line = line.strip().split('\t')
-            sentences_dict[int(line[0])] = line[1]
-    return sentences_dict
+def create_subwords_alignment(sentences_df: pd.DataFrame, tokenizer: AutoTokenizer, subword_prefix: str) -> dict:
+    sentence_alignment_dict = dict()
 
-
-def check_alignment(model_tokens, human_tokens):
-    if len(model_tokens) != len(human_tokens):
-        return False
-    for idx in range(len(model_tokens)):
-        if model_tokens[idx] != human_tokens[idx]:
-            return False
-    return True
-
-
-def create_subwords_alignment(sentences_dict, tokenizer, split_chars):
-    model_sent_dict = dict()
-
-    for sent_id in sentences_dict.keys():
-        human_tokens = sentences_dict[sent_id].split(' ')
-        tokenized_sentence = tokenizer(human_tokens, is_split_into_words=True, return_tensors='pt')
-        model_tokens = tokenizer.convert_ids_to_tokens(tokenized_sentence['input_ids'].tolist()[0])
-        aligned_tokens, alignment_ids = align_to_human_tokens(model_tokens, human_tokens, split_chars)
-        model_sent_dict[sent_id] = {'model_input': tokenized_sentence, 'alignment_ids': alignment_ids}
-        if not check_alignment(aligned_tokens, human_tokens):
-            print(model_tokens)
-            print(human_tokens)
-            assert False
-
-    return model_sent_dict
-
-
-def compute_sentence_contributions(value_zeroing, subwords_alignment_dict, layer, agg_method):
-    sentences_contribs = dict()
-    for sent_id in tqdm(subwords_alignment_dict):
-        model_input = subwords_alignment_dict[sent_id]['model_input']
-        al_ids = subwords_alignment_dict[sent_id]['alignment_ids']
-        contribs = value_zeroing.get_contributions(model_input)
-        cls_contribs = contribs[layer][0].tolist()
-        agg_contribs = aggregate_subtokens_contribs(cls_contribs, al_ids, agg_method=agg_method)
-        sentences_contribs[sent_id] = agg_contribs
-
-    return sentences_contribs
+    for idx, row in sentences_df.iterrows():
+        sent_id = row['sent_id']
+        sentence = row['sentence']
+        for tok_id, tok in enumerate(sentence):
+            if tok == '–':
+                sentence[tok_id] = '-'
+        tokenized_sentence = tokenizer(sentence, is_split_into_words=True, return_tensors='pt')
+        input_ids = tokenized_sentence['input_ids'].tolist()[0]  # 0 because the batch_size is 1
+        model_tokens = tokenizer.convert_ids_to_tokens(input_ids)
+        alignment_ids = align_to_original_words(model_tokens, sentence, subword_prefix)
+        sentence_alignment_dict[sent_id] = {'model_input': tokenized_sentence, 'alignment_ids': alignment_ids}
+    return sentence_alignment_dict
 
 
 def save_dictionary(dictionary, out_path):
@@ -84,8 +57,18 @@ def save_dictionary(dictionary, out_path):
         out_file.write(json.dumps(dictionary))
 
 
+def get_model_subword_prefix(model_name):
+    if model_name == 'xlm-roberta-base':
+        return '▁'
+    elif model_name == 'roberta-base':
+        return 'Ġ'
+    else:
+        return None
+
+
 def main():
     parser = argparse.ArgumentParser()
+    parser.add_argument('-m', '--model_name')
     parser.add_argument('-r', '--rollout', action='store_true')
     parser.add_argument('-a', '--aggregation_method', choices=['max', 'first', 'mean', 'sum'])
     parser.add_argument('-l', '--layer', default=-1, type=int)
@@ -95,25 +78,26 @@ def main():
     print(f'Aggregation mehtod = {args.aggregation_method}')
     print(f'Rollout = {args.rollout}')
 
-    sentences_dir = f'data/meco_l1/sentences/{args.language}'
+    eye_tracking_data_dir = f'../augmenting_nlms_meco_data/{args.language}'
 
-    # model_name = 'bert-base-uncased'
-    model_name = 'xlm-roberta-base'
-    tokenizer = AutoTokenizer.from_pretrained(model_name)
-    split_chars = '▁'#'##'
+    tokenizer = AutoTokenizer.from_pretrained(args.model_name, add_prefix_space=True)
+    subword_prefix = get_model_subword_prefix(args.model_name)
 
-    out_dir = f'data/meco_l1/value_zeroing/{args.language}/roberta'
+    out_dir = f'data/value_zeroing/{args.language}/{args.model_name}'
     if not os.path.exists(out_dir):
         os.mkdir(out_dir)
     file_name = f'{args.aggregation_method}' if not args.rollout else f'{args.aggregation_method}_rollout'
     file_name += f'_l{args.layer}.json'
     out_path = os.path.join(out_dir, file_name)
 
-    sentences_dict = load_sentences(sentences_dir)
-    subwords_alignment_dict = create_subwords_alignment(sentences_dict, tokenizer, split_chars)
-    value_zeroing = ValueZeroingContributions(model_name, rollout=args.rollout, layer=args.layer)
-    sentences_contribs = compute_sentence_contributions(value_zeroing, subwords_alignment_dict, args.layer,
-                                                        args.aggregation_method)
+    dl = EyeTrackingDataLoader(eye_tracking_data_dir)
+    sentences_df = dl.load_sentences()
+
+    sentence_alignment_dict = create_subwords_alignment(sentences_df, tokenizer, subword_prefix)
+
+    attn_extractor = ValueZeroingContributionExtractor(args.model_name, args.layer, args.rollout,
+                                                       args.aggregation_method, 'cpu')
+    sentences_contribs = attn_extractor.get_contributions(sentence_alignment_dict)
 
     save_dictionary(sentences_contribs, out_path)
 
