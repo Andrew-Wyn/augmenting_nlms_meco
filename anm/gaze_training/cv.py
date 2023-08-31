@@ -16,8 +16,8 @@ def cross_validation(cf, dataset, tokenizer, DEVICE, writer, k_folds=10):
 
     splits = folds.split(np.zeros(dataset.num_rows))
 
-    loss_tr_mean = defaultdict(int)
-    loss_ts_mean = defaultdict(int)
+    loss_tr_mean = defaultdict(lambda: 0)
+    loss_ts_mean = defaultdict(lambda: 0)
 
     LOGGER.info(f"Started Cross-Validation, with K = {k_folds}")
 
