@@ -127,13 +127,15 @@ class Prober():
         for layer, layer_input in tqdm(self.probing_dataset["layers"].items()):
             # LOGGER.info(f"Cross Validation layer : {layer} ...")
 
+            metrics[layer] = {}
+
             for label, label_target in self.probing_dataset["labels"].items():
                 score_train, score_test = self._apply_model(layer_input, label_target, linear, k_folds)
 
-                metrics[layer] = {
+                metrics[layer].update({
                     f"{label}_score_train" : score_train.tolist(),
                     f"{label}_score_test" : score_test.tolist()
-                }
+                })
 
                 # LOGGER.info(f"Scores layer - {layer} :")
                 # LOGGER.info(f"{label} train: {score_train.tolist()}")
