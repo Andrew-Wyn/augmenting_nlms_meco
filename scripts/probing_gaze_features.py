@@ -6,8 +6,10 @@ import argparse
 
 import pandas as pd
 
+import torch
+
 from anm.utils import LOGGER, Config, load_model_from_hf
-from anm.gaze_probing import Prober
+from anm.gaze_probing.prober import Prober
 from anm.gaze_dataloader.dataset import _create_senteces_from_data, minmax_preprocessing
 from transformers import (
     AutoModelForTokenClassification,
@@ -21,7 +23,7 @@ from transformers import (
 CACHE_DIR = f"{os.getcwd()}/.hf_cache/"
 # change Transformer cache variable
 os.environ['TRANSFORMERS_CACHE'] = CACHE_DIR
-
+DEVICE = "cpu"
 
 def main():
     parser = argparse.ArgumentParser(description='Regression Probing')
@@ -31,8 +33,6 @@ def main():
                         help=f'Relative path of output directory')
     parser.add_argument('-d', '--dataset', dest='dataset', action='store',
                         help=f'Relative path of dataset folder, containing the .csv file')
-    parser.add_argument('-m', '--model-dir', dest='model_dir', action='store',
-                        help=f'Relative path of finetuned model directory, containing the config and the saved weights')
 
     # Load the script's arguments
     args = parser.parse_args()
@@ -40,7 +40,6 @@ def main():
     config_file = args.config_file
     output_dir = args.output_dir
     dataset = args.dataset
-    model_dir = args.model_dir
 
     # check if the output directory exists, if not create it!
     if not os.path.exists(output_dir):
@@ -53,25 +52,23 @@ def main():
     set_seed(cf.seed)
 
     # Tokenizer
-    tokenizer = AutoTokenizer.from_pretrained(cf.model_name, cache_dir=CACHE_DIR)
+    tokenizer = AutoTokenizer.from_pretrained(cf.model_name, add_prefix_space=True)
 
     # DataLoader
     data = pd.read_csv(args.dataset, index_col=0)
-    gaze_dataset = _create_senteces_from_data(data)
+    modeling_cf = Config.load_json("configs/modeling_configuration.json")
+    gaze_dataset = _create_senteces_from_data(data, modeling_cf.tasks)
     dataloader = minmax_preprocessing(cf, gaze_dataset, tokenizer)
 
     # Model
-    if not cf.finetuned: # downaload from huggingface
-        LOGGER.info("Model retrieving, not finetuned, from hf...")
-        model = load_model_from_hf(cf.model_type, cf.model_name, cf.pretrained)
-    else: # the finetuned model has to be loaded from disk
-        LOGGER.info("Model retrieving, finetuned, load from disk...")
-        model = AutoModelForTokenClassification.from_pretrained(model_dir, output_attentions=False, output_hidden_states=True)
+    LOGGER.info("Model retrieving, from hf...")
+    model = load_model_from_hf(cf.model_type, cf.model_name, cf.pretrained)
 
-    prober = Prober(d, cf.feature_max, output_dir)
+    prober = Prober(dataloader, output_dir, DEVICE)
 
-    _ = prober.create_probing_dataset(model, mean=cf.average)
-    prober.probe(cf.linear, cf.k_fold)
+    _ = prober.create_probing_dataset(model)
+
+    prober.probe(cf.linear, cf.k_folds)
 
 
 if __name__ == "__main__":

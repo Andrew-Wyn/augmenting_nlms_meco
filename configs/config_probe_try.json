@@ -1,0 +1,9 @@
+{
+    "model_name": "roberta-base",
+    "model_type": "Roberta",
+    "train_bs": 1,
+    "pretrained": true,
+    "seed": 123,
+    "k_folds": 10,
+    "linear": true
+  }

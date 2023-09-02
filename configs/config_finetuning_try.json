@@ -8,7 +8,7 @@
   "train_bs": 8,
   "test_bs": 8,
   "n_epochs": 1,
-  "pretrained": false,
+  "pretrained": true,
   "seed": 123,
   "k_folds": 10
 }
