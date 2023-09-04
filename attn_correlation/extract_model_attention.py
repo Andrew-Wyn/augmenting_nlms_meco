@@ -1,4 +1,4 @@
-from utils import EyeTrackingDataLoader, ValueZeroingContributionExtractor
+from utils import EyeTrackingDataLoader, ValueZeroingContributionExtractor, AltiContributionExtractor
 from transformers import AutoTokenizer
 import pandas as pd
 import argparse
@@ -104,7 +104,7 @@ def main():
         attn_extractor = ValueZeroingContributionExtractor(args.model_name, args.layer, args.rollout,
                                                            args.aggregation_method, 'cpu')
     elif args.method == 'alti':
-        pass
+        attn_extractor = AltiContributionExtractor(args.model_name, args.layer, args.rollout, args.aggregation_method, 'cpu')
     else:
         pass
 
