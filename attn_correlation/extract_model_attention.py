@@ -6,7 +6,9 @@ import json
 import os
 
 
-def align_to_original_words(model_tokens: list, original_tokens: list, subword_prefix: str) -> list:
+def align_to_original_words(model_tokens: list, original_tokens: list, subword_prefix: str, lowercase: bool = False) -> list:
+    if lowercase:
+        original_tokens = [tok.lower() for tok in original_tokens]
     model_tokens = model_tokens[1: -1]  # Remove <s> and </s>
     aligned_model_tokens = []
     alignment_ids = []
@@ -24,8 +26,7 @@ def align_to_original_words(model_tokens: list, original_tokens: list, subword_p
             alignment_id -= 1
         else:
             aligned_model_tokens.append(token)
-        if aligned_model_tokens[-1] == original_tokens[
-            orig_idx]:  # A token was equal to an entire original word or a set of
+        if aligned_model_tokens[-1] == original_tokens[orig_idx]:  # A token was equal to an entire original word or a set of
             orig_idx += 1  # sub-tokens was merged and matched an original word
         alignment_ids.append(alignment_id)
 
@@ -35,7 +36,7 @@ def align_to_original_words(model_tokens: list, original_tokens: list, subword_p
     return alignment_ids
 
 
-def create_subwords_alignment(sentences_df: pd.DataFrame, tokenizer: AutoTokenizer, subword_prefix: str) -> dict:
+def create_subwords_alignment(sentences_df: pd.DataFrame, tokenizer: AutoTokenizer, subword_prefix: str, lowercase: bool = False) -> dict:
     sentence_alignment_dict = dict()
 
     for idx, row in sentences_df.iterrows():
@@ -44,10 +45,12 @@ def create_subwords_alignment(sentences_df: pd.DataFrame, tokenizer: AutoTokeniz
         for tok_id, tok in enumerate(sentence):
             if tok == '–':
                 sentence[tok_id] = '-'
+        if lowercase:
+            sentence = [word.lower() for word in sentence]
         tokenized_sentence = tokenizer(sentence, is_split_into_words=True, return_tensors='pt')
         input_ids = tokenized_sentence['input_ids'].tolist()[0]  # 0 because the batch_size is 1
         model_tokens = tokenizer.convert_ids_to_tokens(input_ids)
-        alignment_ids = align_to_original_words(model_tokens, sentence, subword_prefix)
+        alignment_ids = align_to_original_words(model_tokens, sentence, subword_prefix, lowercase)
         sentence_alignment_dict[sent_id] = {'model_input': tokenized_sentence, 'alignment_ids': alignment_ids}
     return sentence_alignment_dict
 
@@ -58,7 +61,7 @@ def save_dictionary(dictionary, out_path):
 
 
 def get_model_subword_prefix(model_name):
-    if model_name == 'xlm-roberta-base':
+    if model_name == 'xlm-roberta-base' or model_name == 'idb-ita/gilberto-uncased-from-camembert':
         return '▁'
     elif model_name == 'roberta-base':
         return 'Ġ'
@@ -69,10 +72,12 @@ def get_model_subword_prefix(model_name):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('-m', '--model_name')
+    parser.add_argument('-e', '--method', choices=['valuezeroing', 'alti', 'attention'])
     parser.add_argument('-r', '--rollout', action='store_true')
     parser.add_argument('-a', '--aggregation_method', choices=['max', 'first', 'mean', 'sum'])
     parser.add_argument('-l', '--layer', default=-1, type=int)
     parser.add_argument('-n', '--language', default='en')
+    parser.add_argument('-o', '--lowercase', action='store_true')
     args = parser.parse_args()
 
     print(f'Aggregation mehtod = {args.aggregation_method}')
@@ -93,10 +98,16 @@ def main():
     dl = EyeTrackingDataLoader(eye_tracking_data_dir)
     sentences_df = dl.load_sentences()
 
-    sentence_alignment_dict = create_subwords_alignment(sentences_df, tokenizer, subword_prefix)
+    sentence_alignment_dict = create_subwords_alignment(sentences_df, tokenizer, subword_prefix, args.lowercase)
 
-    attn_extractor = ValueZeroingContributionExtractor(args.model_name, args.layer, args.rollout,
-                                                       args.aggregation_method, 'cpu')
+    if args.method == 'valuezeroing':
+        attn_extractor = ValueZeroingContributionExtractor(args.model_name, args.layer, args.rollout,
+                                                           args.aggregation_method, 'cpu')
+    elif args.method == 'alti':
+        pass
+    else:
+        pass
+
     sentences_contribs = attn_extractor.get_contributions(sentence_alignment_dict)
 
     save_dictionary(sentences_contribs, out_path)

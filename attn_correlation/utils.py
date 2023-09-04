@@ -1,5 +1,9 @@
+from modules.ValueZeroing.modeling.customized_modeling_xlm_roberta import XLMRobertaForMaskedLMVZ
+from modules.ValueZeroing.modeling.customized_modeling_camembert import CamembertForMaskedLMVZ
 from modules.ValueZeroing.modeling.customized_modeling_roberta import RobertaForMaskedLMVZ
+from modules.alti.src.contributions import ModelWrapper
 from sklearn.metrics.pairwise import cosine_distances
+from modules.alti.src.utils_contributions import *
 from transformers import AutoConfig
 from abc import ABC, abstractmethod
 from tqdm import tqdm
@@ -68,13 +72,16 @@ class TokenContributionExtractor(ABC):
         return sentences_contribs
 
 
-
 class ValueZeroingContributionExtractor(TokenContributionExtractor, ABC):
 
     def _load_model(self, model_name: str):
         config = AutoConfig.from_pretrained(model_name)
         if model_name == 'roberta-base':
             model = RobertaForMaskedLMVZ.from_pretrained(model_name, config=config)
+        elif model_name == 'idb-ita/gilberto-uncased-from-camembert':
+            model = CamembertForMaskedLMVZ.from_pretrained(model_name, config=config)
+        elif model_name == 'xlm-roberta-base':
+            model = XLMRobertaForMaskedLMVZ.from_pretrained(model_name, config=config)
         else:
             model = None
         return model
@@ -119,10 +126,10 @@ class ValueZeroingContributionExtractor(TokenContributionExtractor, ABC):
             for t in range(seq_length):
                 try:
                     extended_blanking_attention_mask: torch.Tensor = self.model.bert.get_extended_attention_mask(
-                        tokenized_text['attention_mask'], input_shape)#, device=self.device)
+                        tokenized_text['attention_mask'], input_shape)  # , device=self.device)
                 except:
                     extended_blanking_attention_mask: torch.Tensor = self.model.roberta.get_extended_attention_mask(
-                        tokenized_text['attention_mask'], input_shape)#, device=self.device)
+                        tokenized_text['attention_mask'], input_shape)  # , device=self.device)
 
                 with torch.no_grad():
                     layer_outputs = layer_module(org_hidden_states[l].unsqueeze(0),  # previous layer's original output
@@ -145,6 +152,22 @@ class ValueZeroingContributionExtractor(TokenContributionExtractor, ABC):
             return valuezeroing_scores
         rollout_valuezeroing_scores = self._compute_joint_attention(valuezeroing_scores, res=False)
         return rollout_valuezeroing_scores
+
+
+class AltiContributionExtractor(TokenContributionExtractor, ABC):
+
+    def _load_model(self, model_name: str):
+        model = AutoModelForMaskedLM.from_pretrained(model_name)
+        return ModelWrapper(model)
+
+    def compute_sentence_contributions(self, tokenized_text):
+        prediction_scores, hidden_states, attentions, contributions_data = self.model(tokenized_text)
+        resultant_norm = torch.norm(torch.squeeze(contributions_data['resultants']), p=1, dim=-1)
+        normalized_contributions = normalize_contributions(contributions_data['contributions'], scaling='min_sum',
+                                                           resultant_norm=resultant_norm)
+        contributions_mix = compute_joint_attention(normalized_contributions)
+        contributions_mix = contributions_mix.detach().cpu().numpy()
+        return contributions_mix
 
 
 class EyeTrackingDataLoader:
