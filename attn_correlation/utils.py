@@ -4,7 +4,7 @@ from modules.ValueZeroing.modeling.customized_modeling_roberta import RobertaFor
 from modules.alti.src.contributions import ModelWrapper
 from sklearn.metrics.pairwise import cosine_distances
 from modules.alti.src.utils_contributions import *
-from transformers import AutoConfig
+from transformers import AutoConfig, AutoModel
 from abc import ABC, abstractmethod
 from tqdm import tqdm
 import pandas as pd
@@ -65,7 +65,8 @@ class TokenContributionExtractor(ABC):
             model_input = subwords_alignment_dict[sent_id]['model_input']
             al_ids = subwords_alignment_dict[sent_id]['alignment_ids']
             contribs = self.compute_sentence_contributions(model_input)
-            cls_contribs = contribs[self.layer][0].tolist()
+            # cls_contribs = contribs[self.layer][0].tolist()
+            cls_contribs = contribs[0].tolist()
             agg_contribs = self._aggregate_subtokens_contributions(cls_contribs, al_ids)
             sentences_contribs[sent_id] = agg_contribs
 
@@ -149,9 +150,12 @@ class ValueZeroingContributionExtractor(TokenContributionExtractor, ABC):
         valuezeroing_scores = score_matrix / np.sum(score_matrix, axis=-1, keepdims=True)
 
         if not self.rollout:
-            return valuezeroing_scores
+            layer_valuezeroing_scores = valuezeroing_scores[self.layer]
+            return layer_valuezeroing_scores
+
         rollout_valuezeroing_scores = self._compute_joint_attention(valuezeroing_scores, res=False)
-        return rollout_valuezeroing_scores
+        layer_rollout_valuezeroing_scores = rollout_valuezeroing_scores[self.layer]
+        return layer_rollout_valuezeroing_scores
 
 
 class AltiContributionExtractor(TokenContributionExtractor, ABC):
@@ -167,7 +171,22 @@ class AltiContributionExtractor(TokenContributionExtractor, ABC):
                                                            resultant_norm=resultant_norm)
         contributions_mix = compute_joint_attention(normalized_contributions)
         contributions_mix = contributions_mix.detach().cpu().numpy()
-        return contributions_mix
+        layer_contributions_mix = contributions_mix[self.layer]
+        return layer_contributions_mix
+
+
+class AttentionMatrixExtractor(TokenContributionExtractor, ABC):
+
+    def _load_model(self, model_name: str):
+        model = AutoModel.from_pretrained(model_name, output_attentions=True)
+        return model
+
+    def compute_sentence_contributions(self, tokenized_text):
+        model_output = self.model(**tokenized_text)
+        layer_attention_matrix = model_output['attentions'][self.layer]
+        layer_attention_matrix = layer_attention_matrix.detach().squeeze()
+        avg_attention_matrix = torch.mean(layer_attention_matrix, dim=0)
+        return avg_attention_matrix
 
 
 class EyeTrackingDataLoader:

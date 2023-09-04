@@ -1,4 +1,9 @@
-from utils import EyeTrackingDataLoader, ValueZeroingContributionExtractor, AltiContributionExtractor
+from utils import (
+    EyeTrackingDataLoader,
+    AttentionMatrixExtractor,
+    AltiContributionExtractor,
+    ValueZeroingContributionExtractor
+    )
 from transformers import AutoTokenizer
 import pandas as pd
 import argparse
@@ -6,7 +11,8 @@ import json
 import os
 
 
-def align_to_original_words(model_tokens: list, original_tokens: list, subword_prefix: str, lowercase: bool = False) -> list:
+def align_to_original_words(model_tokens: list, original_tokens: list, subword_prefix: str,
+                            lowercase: bool = False) -> list:
     if lowercase:
         original_tokens = [tok.lower() for tok in original_tokens]
     model_tokens = model_tokens[1: -1]  # Remove <s> and </s>
@@ -26,7 +32,8 @@ def align_to_original_words(model_tokens: list, original_tokens: list, subword_p
             alignment_id -= 1
         else:
             aligned_model_tokens.append(token)
-        if aligned_model_tokens[-1] == original_tokens[orig_idx]:  # A token was equal to an entire original word or a set of
+        if aligned_model_tokens[-1] == original_tokens[
+            orig_idx]:  # A token was equal to an entire original word or a set of
             orig_idx += 1  # sub-tokens was merged and matched an original word
         alignment_ids.append(alignment_id)
 
@@ -36,7 +43,8 @@ def align_to_original_words(model_tokens: list, original_tokens: list, subword_p
     return alignment_ids
 
 
-def create_subwords_alignment(sentences_df: pd.DataFrame, tokenizer: AutoTokenizer, subword_prefix: str, lowercase: bool = False) -> dict:
+def create_subwords_alignment(sentences_df: pd.DataFrame, tokenizer: AutoTokenizer, subword_prefix: str,
+                              lowercase: bool = False) -> dict:
     sentence_alignment_dict = dict()
 
     for idx, row in sentences_df.iterrows():
@@ -104,9 +112,11 @@ def main():
         attn_extractor = ValueZeroingContributionExtractor(args.model_name, args.layer, args.rollout,
                                                            args.aggregation_method, 'cpu')
     elif args.method == 'alti':
-        attn_extractor = AltiContributionExtractor(args.model_name, args.layer, args.rollout, args.aggregation_method, 'cpu')
+        attn_extractor = AltiContributionExtractor(args.model_name, args.layer, args.rollout, args.aggregation_method,
+                                                   'cpu')
     else:
-        pass
+        attn_extractor = AttentionMatrixExtractor(args.model_name, args.layer, args.rollout, args.aggregation_method,
+                                                  'cpu')
 
     sentences_contribs = attn_extractor.get_contributions(sentence_alignment_dict)
 
