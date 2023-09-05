@@ -3,7 +3,7 @@ from utils import (
     AttentionMatrixExtractor,
     AltiContributionExtractor,
     ValueZeroingContributionExtractor
-    )
+)
 from transformers import AutoTokenizer
 import pandas as pd
 import argparse
@@ -77,6 +77,13 @@ def get_model_subword_prefix(model_name):
         return None
 
 
+def get_model_name_for_directory(model_name):
+    if model_name == 'idb-ita/gilberto-uncased-from-camembert':
+        return 'gilberto'
+    else:
+        return model_name
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('-m', '--model_name')
@@ -96,9 +103,12 @@ def main():
     tokenizer = AutoTokenizer.from_pretrained(args.model_name, add_prefix_space=True)
     subword_prefix = get_model_subword_prefix(args.model_name)
 
-    out_dir = f'data/value_zeroing/{args.language}/{args.model_name}'
-    if not os.path.exists(out_dir):
-        os.mkdir(out_dir)
+    model_name_for_dir = get_model_name_for_directory(args.model_name)
+    out_dir = f'data/{args.method}/{args.language}/{model_name_for_dir}'
+    for directory in [f'data/{args.method}', f'data/{args.method}/{args.language}', out_dir]:
+        if not os.path.exists(directory):
+            os.mkdir(directory)
+
     file_name = f'{args.aggregation_method}' if not args.rollout else f'{args.aggregation_method}_rollout'
     file_name += f'_l{args.layer}.json'
     out_path = os.path.join(out_dir, file_name)
