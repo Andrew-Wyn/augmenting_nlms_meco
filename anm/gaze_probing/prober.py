@@ -17,41 +17,62 @@ from tqdm import tqdm
 
 
 class Prober():
-    def __init__(self, dataloader, output_dir, device):
+    """
+        Class used to compute the probing experiments
+    """
+
+    def __init__(self, dataloader, output_dir):
+        """
+            Args:
+                dataloader: the dataloader of the dataset
+                output_dir (str): the path where the resutls will be saved
+        """
         self.dataloader = dataloader
         self.probing_dataset = None
         self.output_dir = output_dir
-        self.device = device
 
     def create_probing_dataset(self, model):
+        """
+            Create probing dataset, given the model to probe.
+
+            Args:
+                model: the model over which compute the probing
+            Returns:
+                probing_dataset (dict): the probing dataset, with a structure defined by us.
+                {"layers": {"i": np.array}, "labels": {"label_name": []}}
+        """
         LOGGER.info(f"Creating probing datasets...")
 
         probing_dataset = defaultdict(list)
 
         probing_dataset = {
-            "layers": {},
-            "labels": defaultdict(list)
+            "layers": {}, # for each layer it contains the hidden representations of each token (first sub-token)
+            "labels": defaultdict(list) # for each label it contains the list of the target values
         }
 
+        # cicle over the dataloader, one batch at time, assumed to have batch_size = 1
         for batch in tqdm(self.dataloader):
             batch = {
-                "input_ids": batch["input_ids"].to(self.device),
-                "attention_mask": batch["attention_mask"].to(self.device),
-                "labels": {k: v.to(self.device) for k, v in batch["labels"].items()}
+                "input_ids": batch["input_ids"],
+                "attention_mask": batch["attention_mask"],
+                "labels": {k: v for k, v in batch["labels"].items()}
             }
 
             target = batch["labels"]
             
             non_masked_els = None
             
+            # for each label fill the relative storage in the returning dict, taking out the values == -100
             for label, targets in target.items():
                     targets = targets[0]
                     non_masked_els = (targets != -100) > 0
                     probing_dataset["labels"][label] += targets[non_masked_els].tolist()
-
+            
+            # pass the input in the model to retrieve the hidden states
             with torch.no_grad():
                 model_output = model(**batch, output_hidden_states=True)
 
+            # for each layer fill the relative storage in the returning dict, taking only the first sub-token elements
             for layer in range(model.config.num_hidden_layers):
 
                 hidden_state = model_output.hidden_states[layer].numpy()
@@ -73,8 +94,19 @@ class Prober():
 
 
     def _apply_model(self, inputs, targets, linear = True, k_folds=10):
-        # do cross-validation
+        """
+            Apply the model over a (input, targets) pair, to test the model a cross-validation technique is used.
 
+            Args:
+                input: input dataset
+                targets: target for a specific label
+                linear (bool): flag to impose linearity on the probing model
+                k_folds (int): number of cross validation folds
+
+            Returns:
+                loss_tr_mean (float): averaged losses over train datasets
+                loss_ts_mean (float): averaged losses over test datasets
+        """
         loss_tr_mean = 0
         loss_ts_mean = 0
 
@@ -84,6 +116,7 @@ class Prober():
 
         # LOGGER.info(f"Started Cross-Validation, with K = {k_folds}")
 
+        # do cross-validation
         for train_idx, test_idx in splits:
             train_inputs = inputs[train_idx]
             test_inputs = inputs[test_idx]
@@ -97,7 +130,7 @@ class Prober():
             train_targets = scaler.transform(train_targets.reshape(-1, 1)).reshape(-1)
             test_targets = scaler.transform(test_targets.reshape(-1, 1)).reshape(-1)
 
-            # apply a model for each feature
+            # train and test the model
             predicted_train = None
             predicted_test = None
             if linear:
@@ -119,6 +152,16 @@ class Prober():
 
 
     def probe(self, linear, k_folds):
+        """
+            Probe the model over a built dataset.
+            Saving the results in the output_dir path
+
+            Args:
+                linear (bool): flag to impose linearity on the probing model
+                k_folds (int): number of cross validation folds
+
+        """
+
         LOGGER.info(f"Starting probe, Linear = {linear} ...")
         metrics = dict()
 

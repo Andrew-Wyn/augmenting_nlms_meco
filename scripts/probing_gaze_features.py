@@ -23,7 +23,6 @@ from transformers import (
 CACHE_DIR = f"{os.getcwd()}/.hf_cache/"
 # change Transformer cache variable
 os.environ['TRANSFORMERS_CACHE'] = CACHE_DIR
-DEVICE = "cpu"
 
 def main():
     parser = argparse.ArgumentParser(description='Regression Probing')
@@ -64,7 +63,7 @@ def main():
     LOGGER.info("Model retrieving, from hf...")
     model = load_model_from_hf(cf.model_type, cf.model_name, cf.pretrained)
 
-    prober = Prober(dataloader, output_dir, DEVICE)
+    prober = Prober(dataloader, output_dir)
 
     _ = prober.create_probing_dataset(model)
 
