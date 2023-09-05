@@ -7,6 +7,7 @@ from utils import (
 from transformers import AutoTokenizer
 import pandas as pd
 import argparse
+import torch
 import json
 import os
 
@@ -95,6 +96,10 @@ def main():
     parser.add_argument('-o', '--lowercase', action='store_true')
     args = parser.parse_args()
 
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    print('Using device:', device)
+
+    print(f'Attention extraction method = {args.method}')
     print(f'Aggregation mehtod = {args.aggregation_method}')
     print(f'Rollout = {args.rollout}')
 
@@ -120,13 +125,13 @@ def main():
 
     if args.method == 'valuezeroing':
         attn_extractor = ValueZeroingContributionExtractor(args.model_name, args.layer, args.rollout,
-                                                           args.aggregation_method, 'cpu')
+                                                           args.aggregation_method, device)
     elif args.method == 'alti':
         attn_extractor = AltiContributionExtractor(args.model_name, args.layer, args.rollout, args.aggregation_method,
-                                                   'cpu')
+                                                   device)
     else:
         attn_extractor = AttentionMatrixExtractor(args.model_name, args.layer, args.rollout, args.aggregation_method,
-                                                  'cpu')
+                                                  device)
 
     sentences_contribs = attn_extractor.get_contributions(sentence_alignment_dict)
 
