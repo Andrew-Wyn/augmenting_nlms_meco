@@ -15,12 +15,12 @@ import os
 
 class TokenContributionExtractor(ABC):
 
-    def __init__(self, model_name: str, layer: int, rollout: bool, aggregation_method: str, device: str = 'cpu'):
+    def __init__(self, model_name: str, layer: int, rollout: bool, aggregation_method: str, device: str):
         self.layer = layer
         self.rollout = rollout
         self.aggregration_method = aggregation_method
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.model = self._load_model(model_name)
-        self.device = device
 
     @abstractmethod
     def _load_model(self, model_name: str):
@@ -85,6 +85,7 @@ class ValueZeroingContributionExtractor(TokenContributionExtractor, ABC):
             model = XLMRobertaForMaskedLMVZ.from_pretrained(model_name, config=config)
         else:
             model = None
+        model.to(self.device)
         return model
 
     def _compute_joint_attention(self, att_mat, res=True):
@@ -162,6 +163,7 @@ class AltiContributionExtractor(TokenContributionExtractor, ABC):
 
     def _load_model(self, model_name: str):
         model = AutoModelForMaskedLM.from_pretrained(model_name)
+        model.to(self.device)
         return ModelWrapper(model)
 
     def compute_sentence_contributions(self, tokenized_text):
@@ -179,9 +181,11 @@ class AttentionMatrixExtractor(TokenContributionExtractor, ABC):
 
     def _load_model(self, model_name: str):
         model = AutoModel.from_pretrained(model_name, output_attentions=True)
+        model.to(self.device)
         return model
 
     def compute_sentence_contributions(self, tokenized_text):
+        tokenized_text.to(self.device)
         model_output = self.model(**tokenized_text)
         layer_attention_matrix = model_output['attentions'][self.layer]
         layer_attention_matrix = layer_attention_matrix.detach().squeeze()
