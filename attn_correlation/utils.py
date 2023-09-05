@@ -104,6 +104,7 @@ class ValueZeroingContributionExtractor(TokenContributionExtractor, ABC):
 
     def compute_sentence_contributions(self, tokenized_text):
         tokenized_text = {k: v.to(self.device) for k, v in tokenized_text.items()}
+        
         with torch.no_grad():
             try:
                 outputs = self.model(tokenized_text['input_ids'],
@@ -167,6 +168,7 @@ class AltiContributionExtractor(TokenContributionExtractor, ABC):
         return ModelWrapper(model)
 
     def compute_sentence_contributions(self, tokenized_text):
+        tokenized_text.to(self.device)
         prediction_scores, hidden_states, attentions, contributions_data = self.model(tokenized_text)
         resultant_norm = torch.norm(torch.squeeze(contributions_data['resultants']), p=1, dim=-1)
         normalized_contributions = normalize_contributions(contributions_data['contributions'], scaling='min_sum',
