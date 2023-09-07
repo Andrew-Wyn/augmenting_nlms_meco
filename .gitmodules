@@ -2,8 +2,8 @@
 	path = augmenting_nlms_meco_data
 	url = git@github.com:Andrew-Wyn/augmenting_nlms_meco_data.git
 [submodule "attn_correlation/modules/ValueZeroing"]
-	path = anm/attn_correlation/modules/ValueZeroing/ValueZeroing
+	path = anm/attn_correlation/modules/ValueZeroing
 	url = git@github.com:lucadinidue/ValueZeroing.git
 [submodule "attn_correlation/modules/alti"]
-	path = anm/attn_correlation/modules/alti/alti
+	path = anm/attn_correlation/modules/alti
 	url = git@github.com:lucadinidue/alti.git
