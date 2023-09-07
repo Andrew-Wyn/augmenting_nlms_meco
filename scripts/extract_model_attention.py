@@ -109,7 +109,7 @@ def main():
     subword_prefix = get_model_subword_prefix(args.model_name)
 
     model_name_for_dir = get_model_name_for_directory(args.model_name)
-    out_dir = f'data/{args.method}/{args.language}/{model_name_for_dir}'
+    out_dir = f'output/attn_data/{args.method}/{args.language}/{model_name_for_dir}'
     for directory in [f'data/{args.method}', f'data/{args.method}/{args.language}', out_dir]:
         if not os.path.exists(directory):
             os.mkdir(directory)

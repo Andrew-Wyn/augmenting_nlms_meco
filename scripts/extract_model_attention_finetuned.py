@@ -117,7 +117,7 @@ def extract_attention(method, model_name, out_path, src_model_path, language, la
     save_dictionary(sentences_contribs, out_path)
 
 def get_and_create_out_path(model_string, method, layer, rollout):
-    out_dir_1 = 'data/users'
+    out_dir_1 = 'output/attn_data/users'
     out_dir_2 = os.path.join(out_dir_1 , model_string)
     out_dir_3 = os.path.join(out_dir_2, method)
     out_path = os.path.join(out_dir_3, f'{layer}.json' if not rollout else f'{layer}_rollout.json' )
