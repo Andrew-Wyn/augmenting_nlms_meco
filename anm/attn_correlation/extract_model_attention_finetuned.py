@@ -92,7 +92,7 @@ def get_tokenizer_name(model_name):
 def extract_attention(method, model_name, out_path, src_model_path, language, layer, rollout, lowercase):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-    eye_tracking_data_dir = f'../augmenting_nlms_meco_data/{language}'
+    eye_tracking_data_dir = f'../../augmenting_nlms_meco_data/{language}'
 
 
     tokenizer_name = get_tokenizer_name(model_name)

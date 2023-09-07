@@ -103,7 +103,7 @@ def main():
     print(f'Aggregation mehtod = {args.aggregation_method}')
     print(f'Rollout = {args.rollout}')
 
-    eye_tracking_data_dir = f'../augmenting_nlms_meco_data/{args.language}'
+    eye_tracking_data_dir = f'../../augmenting_nlms_meco_data/{args.language}'
 
     tokenizer = AutoTokenizer.from_pretrained(args.model_name, add_prefix_space=True)
     subword_prefix = get_model_subword_prefix(args.model_name)
