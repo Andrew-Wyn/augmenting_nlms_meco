@@ -1,4 +1,8 @@
-from utils import (
+import os
+import sys
+sys.path.append(os.path.abspath(".")) # run the scrpits file from the parent folder
+
+from anm.attn_correlation.utils import (
     EyeTrackingDataLoader,
     AttentionMatrixExtractor,
     AltiContributionExtractor,
