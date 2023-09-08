@@ -2,14 +2,26 @@ import numpy as np
 from collections import defaultdict
 from anm.utils import LOGGER, create_scheduler, load_model_from_hf
 from anm.gaze_training.trainer import GazeTrainer
+from anm.gaze_training.utils import create_finetuning_optimizer
 from sklearn.model_selection import KFold
-from transformers import AdamW
 from anm.gaze_dataloader.dataset import minmax_preprocessing
 
 
 def cross_validation(cf, dataset, tokenizer, DEVICE, writer, k_folds=10):
     """
-    Perform a k-fold cross-validation
+        Perform a k-fold cross-validation
+
+        Args:
+            cf: configuration of the training script
+            dataset: the entire dataset object
+            tokenizer: the tokenizer object
+            DEVICE: the device (cpu|gpu) over the experiments will be execute
+            writer: the object to write the trainer results
+            k_folds: the fold number of k-fold cross-validation
+        
+        Results:
+            loss_tr_mean: 
+            loss_ts_mean:
     """
 
     folds = KFold(n_splits=k_folds)
@@ -35,21 +47,6 @@ def cross_validation(cf, dataset, tokenizer, DEVICE, writer, k_folds=10):
         model = load_model_from_hf(cf.model_type, cf.model_name, cf.pretrained)
 
         # optimizer
-        def create_finetuning_optimizer(cf, model):
-            """
-            Creates an Adam optimizer with weight decay. We can choose whether to perform full finetuning on
-            all parameters of the model or to just optimize the parameters of the final classification layer.
-            """
-            param_optimizer = list(model.named_parameters())
-            no_decay = ["bias"]
-            optimizer_grouped_parameters = [
-                {"params": [p for n, p in param_optimizer if not any(nd in n for nd in no_decay)],
-                "weight_decay_rate": cf.weight_decay},
-                {"params": [p for n, p in param_optimizer if any(nd in n for nd in no_decay)],
-                "weight_decay_rate": 0}
-            ]
-
-            return AdamW(optimizer_grouped_parameters, lr=cf.lr, eps=cf.eps)
         optim = create_finetuning_optimizer(cf, model)
 
         # scheduler

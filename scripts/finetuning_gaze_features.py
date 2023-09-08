@@ -4,10 +4,10 @@ sys.path.append(os.path.abspath(".")) # run the scrpits file from the parent fo
 
 # from anm.modeling.multitask_camembert import CamembertForMultiTaskTokenClassification
 from anm.gaze_training.trainer import GazeTrainer
+from anm.gaze_training.utils import create_finetuning_optimizer
 from anm.gaze_dataloader.dataset import minmax_preprocessing
 from anm.gaze_training.cv import cross_validation
 from anm.utils import Config, load_model_from_hf, create_scheduler, LOGGER
-from transformers import AdamW
 import pandas as pd
 from anm.gaze_dataloader.dataset import _create_senteces_from_data
 import argparse
@@ -74,22 +74,6 @@ def main():
     model = load_model_from_hf(cf.model_type, cf.model_name, cf.pretrained)
 
     # optimizer
-    def create_finetuning_optimizer(cf, model):
-        """
-        Creates an Adam optimizer with weight decay. We can choose whether to perform full finetuning on
-        all parameters of the model or to just optimize the parameters of the final classification layer.
-        """
-        param_optimizer = list(model.named_parameters())
-        no_decay = ["bias"]
-        optimizer_grouped_parameters = [
-            {"params": [p for n, p in param_optimizer if not any(nd in n for nd in no_decay)],
-            "weight_decay_rate": cf.weight_decay},
-            {"params": [p for n, p in param_optimizer if any(nd in n for nd in no_decay)],
-            "weight_decay_rate": 0}
-        ]
-
-        return AdamW(optimizer_grouped_parameters, lr=cf.lr, eps=cf.eps)
-
     optim = create_finetuning_optimizer(cf, model)
 
     # scheduler
