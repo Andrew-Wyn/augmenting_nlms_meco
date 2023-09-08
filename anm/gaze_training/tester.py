@@ -4,6 +4,10 @@ from abc import ABC
 from collections import defaultdict
 
 class Tester(ABC):
+    """
+        Class needed to collect train-test metrics epoch-wise.
+    """
+    
     def __init__(self, device, task, train_dl, test_dl):
         self.device = device
         self.task = task
@@ -25,6 +29,12 @@ class Tester(ABC):
 
 
 class GazeTester(Tester):
+    """
+        Implementation of Tester class for gaze features.
+
+        Compute mse and mae metrics for each gaze feature.
+    """
+
     def __init__(self, model, device, task, train_dl, test_dl=None):
         super().__init__(device, task, train_dl, test_dl)
 

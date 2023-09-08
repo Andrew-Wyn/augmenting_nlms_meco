@@ -49,8 +49,10 @@ class MultiTaskTokenClassifierOutput(ModelOutput):
     Class for outputs of multitask token classification models.
 
     Args:
-        loss (`torch.FloatTensor` of shape `(1,)`, *optional*, returned when `labels` is provided) :
-            Classification loss.
+        loss (dict) :
+            MSE loss.
+        mae_loss (dict) :
+            MAE loss.
         logits (`torch.FloatTensor` of shape `(batch_size, sequence_length, config.num_labels)`):
             Classification scores (before SoftMax).
         hidden_states (`tuple(torch.FloatTensor)`, *optional*, returned when `output_hidden_states=True` is passed or when `config.output_hidden_states=True`):

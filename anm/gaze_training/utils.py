@@ -15,8 +15,7 @@ def mask_mse_loss(b_output, b_target, target_pad, d_out):
 
 def create_finetuning_optimizer(cf, model):
     """
-    Creates an Adam optimizer with weight decay. We can choose whether to perform full finetuning on
-    all parameters of the model or to just optimize the parameters of the final classification layer.
+    Creates an Adam optimizer with weight decay.
     """
     param_optimizer = list(model.named_parameters())
     no_decay = ["bias"]
