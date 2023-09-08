@@ -2,92 +2,13 @@ import os
 import sys
 sys.path.append(os.path.abspath(".")) # run the scrpits file from the parent folder
 
-from anm.attn_correlation.utils import (
-    EyeTrackingDataLoader,
-    AttentionMatrixExtractor,
-    AltiContributionExtractor,
-    ValueZeroingContributionExtractor
-)
+from anm.attn_correlation.utils import *
 from transformers import AutoTokenizer
 import pandas as pd
 import argparse
 import torch
 import json
 import os
-
-
-def align_to_original_words(model_tokens: list, original_tokens: list, subword_prefix: str,
-                            lowercase: bool = False) -> list:
-    if lowercase:
-        original_tokens = [tok.lower() for tok in original_tokens]
-    model_tokens = model_tokens[1: -1]  # Remove <s> and </s>
-    aligned_model_tokens = []
-    alignment_ids = []
-    alignment_id = -1
-    orig_idx = 0
-    for token in model_tokens:
-        alignment_id += 1
-        if token.startswith(subword_prefix):  # Remove the sub-word prefix
-            token = token[len(subword_prefix):]
-        if len(aligned_model_tokens) == 0:  # First token (serve?)
-            aligned_model_tokens.append(token)
-        elif aligned_model_tokens[-1] + token in original_tokens[
-            orig_idx]:  # We are in the second (third, fourth, ...) sub-token
-            aligned_model_tokens[-1] += token  # so we merge the token with its preceding(s)
-            alignment_id -= 1
-        else:
-            aligned_model_tokens.append(token)
-        if aligned_model_tokens[-1] == original_tokens[
-            orig_idx]:  # A token was equal to an entire original word or a set of
-            orig_idx += 1  # sub-tokens was merged and matched an original word
-        alignment_ids.append(alignment_id)
-
-    if aligned_model_tokens != original_tokens:
-        raise Exception(
-            f'Failed to align tokens.\nOriginal tokens: {original_tokens}\nObtained alignment: {aligned_model_tokens}')
-    return alignment_ids
-
-
-def create_subwords_alignment(sentences_df: pd.DataFrame, tokenizer: AutoTokenizer, subword_prefix: str,
-                              lowercase: bool = False) -> dict:
-    sentence_alignment_dict = dict()
-
-    for idx, row in sentences_df.iterrows():
-        sent_id = row['sent_id']
-        sentence = row['sentence']
-        for tok_id, tok in enumerate(sentence):
-            if tok == '–':
-                sentence[tok_id] = '-'
-        if lowercase:
-            sentence = [word.lower() for word in sentence]
-        tokenized_sentence = tokenizer(sentence, is_split_into_words=True, return_tensors='pt')
-        input_ids = tokenized_sentence['input_ids'].tolist()[0]  # 0 because the batch_size is 1
-        model_tokens = tokenizer.convert_ids_to_tokens(input_ids)
-        alignment_ids = align_to_original_words(model_tokens, sentence, subword_prefix, lowercase)
-        sentence_alignment_dict[sent_id] = {'model_input': tokenized_sentence, 'alignment_ids': alignment_ids}
-    return sentence_alignment_dict
-
-
-def save_dictionary(dictionary, out_path):
-    with open(out_path, 'w') as out_file:
-        out_file.write(json.dumps(dictionary))
-
-
-def get_model_subword_prefix(model_name):
-    if model_name == 'xlm-roberta-base' or model_name == 'idb-ita/gilberto-uncased-from-camembert':
-        return '▁'
-    elif model_name == 'roberta-base':
-        return 'Ġ'
-    else:
-        return None
-
-
-def get_model_name_for_directory(model_name):
-    if model_name == 'idb-ita/gilberto-uncased-from-camembert':
-        return 'gilberto'
-    else:
-        return model_name
-
 
 def main():
     parser = argparse.ArgumentParser()
@@ -109,12 +30,9 @@ def main():
 
     eye_tracking_data_dir = f'../../augmenting_nlms_meco_data/{args.language}'
 
-    tokenizer = AutoTokenizer.from_pretrained(args.model_name, add_prefix_space=True)
-    subword_prefix = get_model_subword_prefix(args.model_name)
-
     model_name_for_dir = get_model_name_for_directory(args.model_name)
     out_dir = f'output/attn_data/{args.method}/{args.language}/{model_name_for_dir}'
-    for directory in [f'data/{args.method}', f'data/{args.method}/{args.language}', out_dir]:
+    for directory in [f'output/attn_data/{args.method}', f'output/attn_data/{args.method}/{args.language}', out_dir]:
         if not os.path.exists(directory):
             os.mkdir(directory)
 
@@ -122,25 +40,7 @@ def main():
     file_name += f'_l{args.layer}.json'
     out_path = os.path.join(out_dir, file_name)
 
-    dl = EyeTrackingDataLoader(eye_tracking_data_dir)
-    sentences_df = dl.load_sentences()
-
-    sentence_alignment_dict = create_subwords_alignment(sentences_df, tokenizer, subword_prefix, args.lowercase)
-
-    if args.method == 'valuezeroing':
-        attn_extractor = ValueZeroingContributionExtractor(args.model_name, args.layer, args.rollout,
-                                                           args.aggregation_method, device)
-    elif args.method == 'alti':
-        attn_extractor = AltiContributionExtractor(args.model_name, args.layer, args.rollout, args.aggregation_method,
-                                                   device)
-    else:
-        attn_extractor = AttentionMatrixExtractor(args.model_name, args.layer, args.rollout, args.aggregation_method,
-                                                  device)
-
-    sentences_contribs = attn_extractor.get_contributions(sentence_alignment_dict)
-
-    save_dictionary(sentences_contribs, out_path)
-
+    extract_attention(args.method, args.model_name, out_path, args.model_name, args.language, args.layer, args.rollout, args.lowercase)
 
 if __name__ == '__main__':
     main()
