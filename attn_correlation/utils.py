@@ -77,12 +77,12 @@ class ValueZeroingContributionExtractor(TokenContributionExtractor, ABC):
 
     def _load_model(self, model_name: str):
         config = AutoConfig.from_pretrained(model_name)
-        if model_name == 'roberta-base':
-            model = RobertaForMaskedLMVZ.from_pretrained(model_name, config=config)
-        elif model_name == 'idb-ita/gilberto-uncased-from-camembert':
-            model = CamembertForMaskedLMVZ.from_pretrained(model_name, config=config)
-        elif model_name == 'xlm-roberta-base':
+        if 'xlm-roberta-base' in model_name:
             model = XLMRobertaForMaskedLMVZ.from_pretrained(model_name, config=config)
+        elif 'roberta-base' in model_name:
+            model = RobertaForMaskedLMVZ.from_pretrained(model_name, config=config)
+        elif 'camembert' in model_name:
+            model = CamembertForMaskedLMVZ.from_pretrained(model_name, config=config)
         else:
             model = None
         model.to(self.device)

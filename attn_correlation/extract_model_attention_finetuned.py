@@ -106,7 +106,7 @@ def extract_attention(method, model_name, out_path, src_model_path, language, la
     sentence_alignment_dict = create_subwords_alignment(sentences_df, tokenizer, subword_prefix, lowercase)
 
     if method == 'valuezeroing':
-        attn_extractor = ValueZeroingContributionExtractor(src_model_path, layer, rollout, 'first', device, tokenizer_name)
+        attn_extractor = ValueZeroingContributionExtractor(src_model_path, layer, rollout, 'first', device)
     elif method == 'alti':
         attn_extractor = AltiContributionExtractor(src_model_path, layer, rollout, 'first', device)
     else:
