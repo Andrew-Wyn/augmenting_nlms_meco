@@ -4,33 +4,44 @@ from sklearn.preprocessing import MinMaxScaler
 from anm.gaze_dataloader.datacollator import DataCollatorForMultiTaskTokenClassification
 from torch.utils.data import DataLoader
 
-def _create_senteces_from_data(data, tasks):
+def _create_senteces_from_data(data, tasks, keep_id=False):
     dropping_cols = set(data.columns).difference(set(tasks))
     
     # sort by trialid, sentnum and ianum, to avoid splitted sentences
     data = data.sort_values(by=["trialid", "sentnum", "ianum"])
 
     # create sentence_id
-    data["sentence_id"] = data["trialid"].astype(int).astype(str) + data["sentnum"].astype(int).astype(str)
-
+    data["sentence_id"] = data["trialid"].astype(int).astype(str) + '_' +data["sentnum"].astype(int).astype(str)
+    
     dropping_cols.add("sentence_id")
-
+    
     word_func = lambda s: [w for w in s["ia"].values.tolist()]
 
     features_func = lambda s: [np.array(s.drop(columns=dropping_cols).iloc[i])
                             for i in range(len(s))]
 
-    sentences = data.groupby("sentence_id").apply(word_func).tolist()
+    grouped_data = data.groupby("sentence_id")
 
-    targets = data.groupby("sentence_id").apply(features_func).tolist()
+    sentences_ids = list(grouped_data.groups.keys())
+    sentences = grouped_data.apply(word_func).tolist()
+    targets = grouped_data.apply(features_func).tolist()
 
+    
     data_list = []
 
-    for s, t in zip(sentences, targets):
-        data_list.append({
+    
+    for s_id, s, t in zip(sentences_ids, sentences, targets):
+        if keep_id:
+            data_list.append({
+            **{"id": s_id},
             **{"text": s,},
             **{"label_"+str(l) : np.array(t)[:, i] for i, l in enumerate(tasks)}
         })
+        else:
+            data_list.append({
+                **{"text": s,},
+                **{"label_"+str(l) : np.array(t)[:, i] for i, l in enumerate(tasks)}
+            })
 
     return Dataset.from_list(data_list)
 
