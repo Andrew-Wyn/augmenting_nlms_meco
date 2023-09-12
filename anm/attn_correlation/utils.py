@@ -2,9 +2,10 @@ from anm.attn_correlation.modules.ValueZeroing.modeling.customized_modeling_xlm_
 from anm.attn_correlation.modules.ValueZeroing.modeling.customized_modeling_camembert import CamembertForMaskedLMVZ
 from anm.attn_correlation.modules.ValueZeroing.modeling.customized_modeling_roberta import RobertaForMaskedLMVZ
 from anm.attn_correlation.modules.alti.src.contributions import ModelWrapper
-from sklearn.metrics.pairwise import cosine_distances
 from anm.attn_correlation.modules.alti.src.utils_contributions import *
+from sklearn.metrics.pairwise import cosine_distances
 from transformers import AutoConfig, AutoModel
+from transformers import AutoTokenizer
 from abc import ABC, abstractmethod
 from tqdm import tqdm
 import pandas as pd
@@ -104,7 +105,7 @@ class ValueZeroingContributionExtractor(TokenContributionExtractor, ABC):
 
     def compute_sentence_contributions(self, tokenized_text):
         tokenized_text = {k: v.to(self.device) for k, v in tokenized_text.items()}
-        
+
         with torch.no_grad():
             try:
                 outputs = self.model(tokenized_text['input_ids'],
@@ -295,6 +296,8 @@ def get_model_subword_prefix(tokenizer_name):
 
 
 def get_tokenizer_name(model_name):
+    if model_name in ['xlm-roberta-base', 'roberta-base', 'idb-ita/gilberto-uncased-from-camembert']:
+        return model_name
     if model_name == 'xlm':
         return 'xlm-roberta-base'
     elif model_name == 'roberta':
@@ -303,18 +306,16 @@ def get_tokenizer_name(model_name):
         return 'idb-ita/gilberto-uncased-from-camembert'
     else:
         return None
-    
+
 
 def extract_attention(method, model_name, out_path, src_model_path, language, layer, rollout, lowercase):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-    eye_tracking_data_dir = f'../../augmenting_nlms_meco_data/{language}'
-
+    eye_tracking_data_dir = f'augmenting_nlms_meco_data/{language}'
 
     tokenizer_name = get_tokenizer_name(model_name)
     tokenizer = AutoTokenizer.from_pretrained(tokenizer_name, add_prefix_space=True)
     subword_prefix = get_model_subword_prefix(tokenizer_name)
-
 
     dl = EyeTrackingDataLoader(eye_tracking_data_dir)
     sentences_df = dl.load_sentences()
@@ -335,11 +336,10 @@ def extract_attention(method, model_name, out_path, src_model_path, language, la
 
 def get_and_create_out_path(model_string, method, layer, rollout):
     out_dir_1 = 'output/attn_data/users'
-    out_dir_2 = os.path.join(out_dir_1 , model_string)
+    out_dir_2 = os.path.join(out_dir_1, model_string)
     out_dir_3 = os.path.join(out_dir_2, method)
-    out_path = os.path.join(out_dir_3, f'{layer}.json' if not rollout else f'{layer}_rollout.json' )
+    out_path = os.path.join(out_dir_3, f'{layer}.json' if not rollout else f'{layer}_rollout.json')
     for directory in [out_dir_1, out_dir_2, out_dir_3]:
         if not os.path.exists(directory):
             os.mkdir(directory)
     return out_path
-

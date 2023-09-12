@@ -1,14 +1,19 @@
 import os
 import sys
-sys.path.append(os.path.abspath(".")) # run the scrpits file from the parent folder
+
+sys.path.append(os.path.abspath("."))  #  run the scrpits file from the parent folder
 
 from anm.attn_correlation.utils import *
-from transformers import AutoTokenizer
-import pandas as pd
 import argparse
 import torch
-import json
-import os
+
+
+def get_model_name_for_directory(model_name):
+    if model_name == 'idb-ita/gilberto-uncased-from-camembert':
+        return 'gilberto'
+    else:
+        return model_name
+
 
 def main():
     parser = argparse.ArgumentParser()
@@ -28,11 +33,12 @@ def main():
     print(f'Aggregation mehtod = {args.aggregation_method}')
     print(f'Rollout = {args.rollout}')
 
-    eye_tracking_data_dir = f'../../augmenting_nlms_meco_data/{args.language}'
+    # eye_tracking_data_dir = f'../../augmenting_nlms_meco_data/{args.language}'
 
     model_name_for_dir = get_model_name_for_directory(args.model_name)
-    out_dir = f'output/attn_data/{args.method}/{args.language}/{model_name_for_dir}'
-    for directory in [f'output/attn_data/{args.method}', f'output/attn_data/{args.method}/{args.language}', out_dir]:
+    out_dir = f'output/attn_data/models_attention/{args.method}/{args.language}/{model_name_for_dir}'
+    for directory in [f'output/attn_data/models_attention/{args.method}',
+                      f'output/attn_data/models_attention/{args.method}/{args.language}', out_dir]:
         if not os.path.exists(directory):
             os.mkdir(directory)
 
@@ -40,7 +46,9 @@ def main():
     file_name += f'_l{args.layer}.json'
     out_path = os.path.join(out_dir, file_name)
 
-    extract_attention(args.method, args.model_name, out_path, args.model_name, args.language, args.layer, args.rollout, args.lowercase)
+    extract_attention(args.method, args.model_name, out_path, args.model_name, args.language, args.layer, args.rollout,
+                      args.lowercase)
+
 
 if __name__ == '__main__':
     main()
