@@ -77,11 +77,11 @@ class ValueZeroingContributionExtractor(TokenContributionExtractor, ABC):
 
     def _load_model(self, model_name: str):
         config = AutoConfig.from_pretrained(model_name)
-        if model_name == 'roberta-base':
+        if 'roberta-base' in model_name:
             model = RobertaForMaskedLMVZ.from_pretrained(model_name, config=config)
-        elif model_name == 'idb-ita/gilberto-uncased-from-camembert':
+        elif 'camembert' in model_name:
             model = CamembertForMaskedLMVZ.from_pretrained(model_name, config=config)
-        elif model_name == 'xlm-roberta-base':
+        elif 'xlm-roberta-base' in model_name:
             model = XLMRobertaForMaskedLMVZ.from_pretrained(model_name, config=config)
         else:
             model = None
@@ -322,7 +322,7 @@ def extract_attention(method, model_name, out_path, src_model_path, language, la
     sentence_alignment_dict = create_subwords_alignment(sentences_df, tokenizer, subword_prefix, lowercase)
 
     if method == 'valuezeroing':
-        attn_extractor = ValueZeroingContributionExtractor(src_model_path, layer, rollout, 'first', device, tokenizer_name)
+        attn_extractor = ValueZeroingContributionExtractor(src_model_path, layer, rollout, 'first', device)
     elif method == 'alti':
         attn_extractor = AltiContributionExtractor(src_model_path, layer, rollout, 'first', device)
     else:
