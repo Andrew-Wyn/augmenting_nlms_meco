@@ -7,6 +7,7 @@ from sklearn.metrics.pairwise import cosine_distances
 from transformers import AutoConfig, AutoModel
 from transformers import AutoTokenizer
 from abc import ABC, abstractmethod
+from datasets import Dataset
 from tqdm import tqdm
 import pandas as pd
 import numpy as np
@@ -16,7 +17,7 @@ import os
 
 class TokenContributionExtractor(ABC):
 
-    def __init__(self, model_name: str, layer: int, rollout: bool, aggregation_method: str, device: str):
+    def __init__(self, model_name: str, layer: int, rollout: bool, aggregation_method: str):
         self.layer = layer
         self.rollout = rollout
         self.aggregration_method = aggregation_method
@@ -78,14 +79,14 @@ class ValueZeroingContributionExtractor(TokenContributionExtractor, ABC):
 
     def _load_model(self, model_name: str):
         config = AutoConfig.from_pretrained(model_name)
-        if 'roberta-base' in model_name:
-            model = RobertaForMaskedLMVZ.from_pretrained(model_name, config=config)
-        elif 'camembert' in model_name:
-            model = CamembertForMaskedLMVZ.from_pretrained(model_name, config=config)
-        elif 'xlm-roberta-base' in model_name:
+        if 'xlm' in model_name:
             model = XLMRobertaForMaskedLMVZ.from_pretrained(model_name, config=config)
+        elif 'roberta' in model_name:
+            model = RobertaForMaskedLMVZ.from_pretrained(model_name, config=config)
+        elif 'camembert' or 'gilberto' in model_name:
+            model = CamembertForMaskedLMVZ.from_pretrained(model_name, config=config)
         else:
-            model = None
+             model = None
         model.to(self.device)
         return model
 
@@ -261,13 +262,11 @@ def align_to_original_words(model_tokens: list, original_tokens: list, subword_p
     return alignment_ids
 
 
-def create_subwords_alignment(sentences_df: pd.DataFrame, tokenizer: AutoTokenizer, subword_prefix: str,
+def create_subwords_alignment(dataset: Dataset, tokenizer: AutoTokenizer, subword_prefix: str,
                               lowercase: bool = False) -> dict:
     sentence_alignment_dict = dict()
 
-    for idx, row in sentences_df.iterrows():
-        sent_id = row['sent_id']
-        sentence = row['sentence']
+    for sent_id, sentence in zip(dataset['id'], dataset['text']):
         for tok_id, tok in enumerate(sentence):
             if tok == '–':
                 sentence[tok_id] = '-'
@@ -293,53 +292,3 @@ def get_model_subword_prefix(tokenizer_name):
         return 'Ġ'
     else:
         return None
-
-
-def get_tokenizer_name(model_name):
-    if model_name in ['xlm-roberta-base', 'roberta-base', 'idb-ita/gilberto-uncased-from-camembert']:
-        return model_name
-    if model_name == 'xlm':
-        return 'xlm-roberta-base'
-    elif model_name == 'roberta':
-        return 'roberta-base'
-    elif model_name == 'camem':
-        return 'idb-ita/gilberto-uncased-from-camembert'
-    else:
-        return None
-
-
-def extract_attention(method, model_name, out_path, src_model_path, language, layer, rollout, lowercase):
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
-    eye_tracking_data_dir = f'augmenting_nlms_meco_data/{language}'
-
-    tokenizer_name = get_tokenizer_name(model_name)
-    tokenizer = AutoTokenizer.from_pretrained(tokenizer_name, add_prefix_space=True)
-    subword_prefix = get_model_subword_prefix(tokenizer_name)
-
-    dl = EyeTrackingDataLoader(eye_tracking_data_dir)
-    sentences_df = dl.load_sentences()
-
-    sentence_alignment_dict = create_subwords_alignment(sentences_df, tokenizer, subword_prefix, lowercase)
-
-    if method == 'valuezeroing':
-        attn_extractor = ValueZeroingContributionExtractor(src_model_path, layer, rollout, 'first', device)
-    elif method == 'alti':
-        attn_extractor = AltiContributionExtractor(src_model_path, layer, rollout, 'first', device)
-    else:
-        attn_extractor = AttentionMatrixExtractor(src_model_path, layer, rollout, 'first', device)
-
-    sentences_contribs = attn_extractor.get_contributions(sentence_alignment_dict)
-
-    save_dictionary(sentences_contribs, out_path)
-
-
-def get_and_create_out_path(model_string, method, layer, rollout):
-    out_dir_1 = 'output/attn_data/users'
-    out_dir_2 = os.path.join(out_dir_1, model_string)
-    out_dir_3 = os.path.join(out_dir_2, method)
-    out_path = os.path.join(out_dir_3, f'{layer}.json' if not rollout else f'{layer}_rollout.json')
-    for directory in [out_dir_1, out_dir_2, out_dir_3]:
-        if not os.path.exists(directory):
-            os.mkdir(directory)
-    return out_path
