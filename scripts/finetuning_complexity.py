@@ -8,7 +8,7 @@ import torch
 
 import numpy as np
 import pandas as pd
-
+from transformers import DataCollatorWithPadding
 
 from transformers import (
     AutoConfig,
@@ -27,11 +27,11 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 
 
-from gaze.utils import Config, LOGGER
+from anm.utils import Config, LOGGER
+from datasets import Dataset
 
 def read_complexity_dataset(path=None):
-    texts = list()
-    labels = list()
+    data = []
 
     df = pd.read_csv(path)
 
@@ -39,7 +39,7 @@ def read_complexity_dataset(path=None):
         
         num_individuals = 20
 
-        texts.append(row["SENTENCE"])
+        text = row["SENTENCE"]
 
         label = 0
 
@@ -48,23 +48,13 @@ def read_complexity_dataset(path=None):
 
         label = label/num_individuals
 
-        labels.append(label)
+        data.append({
+            "text": text,
+            "label": label
+        })
 
-    return texts, labels
 
-
-class ComplexityDataset(torch.utils.data.Dataset):
-    def __init__(self, encodings, labels):
-        self.encodings = encodings
-        self.labels = labels
-
-    def __getitem__(self, idx):
-        item = {key: torch.tensor(val[idx]) for key, val in self.encodings.items()}
-        item['labels'] = torch.tensor(self.labels[idx])
-        return item
-
-    def __len__(self):
-        return len(self.labels)
+    return Dataset.from_list(data)
 
 
 # TODO: capire perche se non setto cache_dir in AutoTokenizer
@@ -74,7 +64,8 @@ CACHE_DIR = f"{os.getcwd()}/.hf_cache/"
 os.environ['TRANSFORMERS_CACHE'] = CACHE_DIR
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-def load_model_from_hf(model_name, pretrained, d_out=8):
+
+def load_model_from_hf(model_name, pretrained):
 
     # Model
     LOGGER.info("Initiating model ...")
@@ -82,12 +73,19 @@ def load_model_from_hf(model_name, pretrained, d_out=8):
         # initiate model with random weights
         LOGGER.info("Take randomized model")
         
-        config = AutoConfig.from_pretrained(model_name, num_labels=d_out)
+        config = AutoConfig.from_pretrained(model_name,
+                                            num_labels=1,
+                                            output_attentions=False,
+                                            output_hidden_states=False)
+        
         model = AutoModelForSequenceClassification.from_config(config)
     else:
         LOGGER.info("Take pretrained model")
     
-        model = AutoModelForSequenceClassification.from_pretrained(model_name, num_labels=d_out)
+        model = AutoModelForSequenceClassification.from_pretrained(model_name,
+                                                                   num_labels=1,
+                                                                   output_attentions=False,
+                                                                   output_hidden_states=False)
 
     return model
 
@@ -112,8 +110,10 @@ if __name__ == "__main__":
                         help=f'Relative path of a .json file, that contain parameters for the fine-tune script')
     parser.add_argument('-o', '--output-dir', dest='output_dir', action='store',
                         help=f'Relative path of output directory')
-    parser.add_argument('-d', '--dataset', dest='dataset', action='store',
-                        help=f'Relative path of dataset folder, containing the .csv file')
+    parser.add_argument('-dd', '--dev_dataset', dest='dev_dataset', action='store',
+                        help=f'Relative path of development dataset folder, containing the .csv file')
+    parser.add_argument('-td', '--test_dataset', dest='test_dataset', action='store',
+                        help=f'Relative path of test dataset folder, containing the .csv file')
     parser.add_argument('-m', '--model-dir', dest='model_dir', action='store',
                         help=f'Relative path of finetuned model directory, containing the config and the saved weights')
     parser.add_argument('-p', '--pretrained', dest='pretrained', default=False, action='store_true',
@@ -135,21 +135,34 @@ if __name__ == "__main__":
     if not os.path.exists(args.output_dir):
         os.makedirs(args.output_dir)
 
-    texts, labels = read_complexity_dataset(args.dataset)
+    # development dataset loading
+    dev_dataset = read_complexity_dataset(args.dev_dataset)
+    
+    # split development in train valid
+    dev_dataset = dev_dataset.train_test_split(test_size=0.25)
+    train_dataset = dev_dataset["train"]
+    valid_dataset = dev_dataset["test"]
 
-    train_texts, val_texts, train_labels, val_labels = train_test_split(texts, labels, test_size=.2, random_state=cf.seed)
-    train_texts, test_texts, train_labels, test_labels = train_test_split(train_texts, train_labels, test_size=.2, random_state=cf.seed)
+    # test dataset loading
+    test_dataset = read_complexity_dataset(args.test_dataset)
 
-
+    # Tokenizer
     tokenizer = AutoTokenizer.from_pretrained(cf.model_name, cache_dir=CACHE_DIR)
 
-    train_encodings = tokenizer(train_texts, truncation=True, padding=True)
-    val_encodings = tokenizer(val_texts, truncation=True, padding=True)
-    test_encodings = tokenizer(test_texts, truncation=True, padding=True)
+    # Tokenize datasets
+    def preprocess_function(examples):
+        return tokenizer(examples["text"], truncation=True)
+    
+    tokenized_train_ds = train_dataset.map(preprocess_function, batched=True)
+    tokenized_valid_ds = valid_dataset.map(preprocess_function, batched=True)
+    tokenized_test_ds = test_dataset.map(preprocess_function, batched=True)
 
-    train_dataset = ComplexityDataset(train_encodings, train_labels)
-    val_dataset = ComplexityDataset(val_encodings, val_labels)
-    test_dataset = ComplexityDataset(test_encodings, test_labels)
+    """
+    Now create a batch of examples using DataCollatorWithPadding.
+    It’s more efficient to dynamically pad the sentences to the longest length in a batch during collation,
+    instead of padding the whole dataset to the maximum length.
+    """
+    data_collator = DataCollatorWithPadding(tokenizer=tokenizer)
 
     training_args = TrainingArguments(
         output_dir=args.output_dir,          # output directory
@@ -178,7 +191,7 @@ if __name__ == "__main__":
     # Model
     if not args.finetuned: # downaload from huggingface
         LOGGER.info("Model retrieving, not finetuned, from hf...")
-        model = load_model_from_hf(cf.model_name, args.pretrained, 1)
+        model = load_model_from_hf(cf.model_name, args.pretrained)
     else: # the finetuned model has to be loaded from disk
         LOGGER.info("Model retrieving, finetuned, load from disk...")
         model = AutoModelForSequenceClassification.from_pretrained(args.model_dir, 
@@ -189,10 +202,11 @@ if __name__ == "__main__":
     trainer = Trainer(
         model=model,                         # the instantiated 🤗 Transformers model to be trained
         args=training_args,                  # training arguments, defined above
-        train_dataset=train_dataset,         # training dataset
-        eval_dataset=val_dataset,            # evaluation dataset
+        train_dataset=tokenized_train_ds,         # training dataset
+        eval_dataset=tokenized_valid_ds,            # evaluation dataset
         compute_metrics=compute_metrics_for_regression,
         tokenizer = tokenizer,
+        data_collator=data_collator,
         callbacks = [EarlyStoppingCallback(early_stopping_patience=cf.patience)]
     )
 
@@ -205,9 +219,20 @@ if __name__ == "__main__":
     trainer.log_metrics("train", metrics)
     trainer.save_metrics("train", metrics)
 
-    # compute evaluation results
-    metrics = trainer.evaluate(test_dataset)
+    # save evaluation results
+    valid_metrics = trainer.evaluate(eval_dataset=tokenized_valid_ds)
 
     # save evaluation results
-    trainer.log_metrics("test", metrics)
-    trainer.save_metrics("test", metrics)
+    trainer.log_metrics("valid", valid_metrics)
+    trainer.save_metrics("valid", valid_metrics)
+
+
+    # compute evaluation results
+    test_metrics = trainer.evaluate(eval_dataset=tokenized_test_ds, metric_key_prefix="test")
+
+    # save evaluation results
+    trainer.log_metrics("test", test_metrics)
+    trainer.save_metrics("test", test_metrics)
+
+    print(tokenized_valid_ds["text"][0])
+    print(tokenized_test_ds["text"][0])
