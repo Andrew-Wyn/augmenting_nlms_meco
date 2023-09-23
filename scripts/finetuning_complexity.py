@@ -30,6 +30,7 @@ from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 from anm.utils import Config, LOGGER
 from datasets import Dataset
 
+
 def read_complexity_dataset(path=None):
     data = []
 
@@ -116,6 +117,8 @@ if __name__ == "__main__":
                         help=f'Relative path of test dataset folder, containing the .csv file')
     parser.add_argument('-m', '--model-dir', dest='model_dir', action='store',
                         help=f'Relative path of finetuned model directory, containing the config and the saved weights')
+    parser.add_argument('-n', '--model-name', dest='model_name', action='store',
+                        help=f'name of the model that you want to use')
     parser.add_argument('-p', '--pretrained', dest='pretrained', default=False, action='store_true',
                         help=f'Bool, start from a pretrained model')
     parser.add_argument('-f', '--finetuned', dest='finetuned', default=False, action='store_true',
@@ -147,7 +150,7 @@ if __name__ == "__main__":
     test_dataset = read_complexity_dataset(args.test_dataset)
 
     # Tokenizer
-    tokenizer = AutoTokenizer.from_pretrained(cf.model_name, cache_dir=CACHE_DIR)
+    tokenizer = AutoTokenizer.from_pretrained(args.model_name, cache_dir=CACHE_DIR)
 
     # Tokenize datasets
     def preprocess_function(examples):
@@ -181,7 +184,6 @@ if __name__ == "__main__":
     )
 
     """
-
     /see: https://towardsdatascience.com/linear-regression-with-hugging-face-3883fe729324
 
     According to Hugging Face’s library, when we load the pre-trained models from the Hugging Face API, 
@@ -191,7 +193,7 @@ if __name__ == "__main__":
     # Model
     if not args.finetuned: # downaload from huggingface
         LOGGER.info("Model retrieving, not finetuned, from hf...")
-        model = load_model_from_hf(cf.model_name, args.pretrained)
+        model = load_model_from_hf(args.model_name, args.pretrained)
     else: # the finetuned model has to be loaded from disk
         LOGGER.info("Model retrieving, finetuned, load from disk...")
         model = AutoModelForSequenceClassification.from_pretrained(args.model_dir, 
@@ -226,13 +228,9 @@ if __name__ == "__main__":
     trainer.log_metrics("valid", valid_metrics)
     trainer.save_metrics("valid", valid_metrics)
 
-
     # compute evaluation results
     test_metrics = trainer.evaluate(eval_dataset=tokenized_test_ds, metric_key_prefix="test")
 
     # save evaluation results
     trainer.log_metrics("test", test_metrics)
     trainer.save_metrics("test", test_metrics)
-
-    print(tokenized_valid_ds["text"][0])
-    print(tokenized_test_ds["text"][0])
