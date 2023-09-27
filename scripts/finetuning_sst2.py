@@ -117,7 +117,7 @@ if __name__ == "__main__":
     # Model
     if not args.finetuned: # downaload from huggingface
         LOGGER.info("Model retrieving, not finetuned, from hf...")
-        model = load_model_from_hf(cf.model_name, args.pretrained)
+        model = load_model_from_hf(args.model_name, args.pretrained)
     else: # the finetuned model has to be loaded from disk
         LOGGER.info("Model retrieving, finetuned, load from disk...")
         model = AutoModelForSequenceClassification.from_pretrained(args.model_dir, 
