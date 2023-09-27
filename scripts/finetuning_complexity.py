@@ -168,7 +168,7 @@ if __name__ == "__main__":
 #        per_device_eval_batch_size=cf.eval_bs,   # batch size for evaluation
         warmup_steps=500,                # number of warmup steps for learning rate scheduler
         weight_decay=cf.weight_decay,               # strength of weight decay
-#        save_strategy="epoch",
+        save_strategy="no",
 #        evaluation_strategy="epoch",
         learning_rate=cf.lr,
 #        load_best_model_at_end = True,  
