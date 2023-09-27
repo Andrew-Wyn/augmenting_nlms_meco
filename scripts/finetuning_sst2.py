@@ -1,36 +1,24 @@
 import os
 import sys
 sys.path.append(os.path.abspath(".")) # run the scrpits file from the parent folder
-
 import argparse
-
 import torch
-
 import numpy as np
 import pandas as pd
 
 from datasets import load_dataset
-
 from transformers import (
     AutoConfig,
     AutoModelForSequenceClassification,
     AutoTokenizer,
-    # DataCollatorWithPadding,
     EvalPrediction,
-    # HfArgumentParser,
-    # PretrainedConfig,
     Trainer,
     TrainingArguments,
-    # default_data_collator,
     set_seed,
 )
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
-
-
 from anm.utils import Config, LOGGER
 
-
+# --- Set HF CACHE and DEVICE
 # TODO: capire perche se non setto cache_dir in AutoTokenizer
 # non usa come cache la directory specificata
 CACHE_DIR = f"{os.getcwd()}/.hf_cache/"
@@ -38,7 +26,11 @@ CACHE_DIR = f"{os.getcwd()}/.hf_cache/"
 os.environ['TRANSFORMERS_CACHE'] = CACHE_DIR
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+
 def compute_metrics(p: EvalPrediction):
+    """
+        Compute accuracy metric for classification task...
+    """
     preds = p.predictions[0] if isinstance(p.predictions, tuple) else p.predictions
     preds = np.argmax(preds, axis=1)
 
@@ -46,7 +38,6 @@ def compute_metrics(p: EvalPrediction):
 
 
 def load_model_from_hf(model_name, pretrained):
-
     # Model
     LOGGER.info("Initiating model ...")
     if not pretrained:
@@ -62,8 +53,8 @@ def load_model_from_hf(model_name, pretrained):
 
     return model
 
-if __name__ == "__main__":
 
+if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Fine-tune a XLM-Roberta-base following config json passed')
     parser.add_argument('-c' ,'--config', dest='config_file', action='store',
                         help=f'Relative path of a .json file, that contain parameters for the fine-tune script')
@@ -94,6 +85,7 @@ if __name__ == "__main__":
 
     tokenizer = AutoTokenizer.from_pretrained(args.model_name, cache_dir=CACHE_DIR)
 
+    # download the SST2 dataset from huggingface repository
     dataset_sst2 = load_dataset("sst2", cache_dir=CACHE_DIR)
 
     def tokenize_function(examples):
@@ -111,10 +103,6 @@ if __name__ == "__main__":
     )
 
     # Model
-    LOGGER.info("Model retrieving...")
-    LOGGER.info("Take pretrained model")
-
-    # Model
     if not args.finetuned: # downaload from huggingface
         LOGGER.info("Model retrieving, not finetuned, from hf...")
         model = load_model_from_hf(args.model_name, args.pretrained)
@@ -125,9 +113,11 @@ if __name__ == "__main__":
                                                                    output_attentions=False, output_hidden_states=False,
                                                                    num_labels=2) # number of the classes
 
+    # Tokenize the dataset
     tokenized_datasets_sst2 = dataset_sst2.map(tokenize_function, batched=True,
                                                             load_from_cache_file=CACHE_DIR)
-        
+
+    #  train the model
     trainer = Trainer(
         model=model,                         # the instantiated 🤗 Transformers model to be trained
         args=training_args,                  # training arguments, defined above
@@ -144,14 +134,14 @@ if __name__ == "__main__":
     # compute train results
 #     metrics = train_result.metrics
 
-    # compute evaluation results
+    # compute evaluation results over training set
     train_metrics = trainer.evaluate(eval_dataset=tokenized_datasets_sst2["train"], metric_key_prefix="train")
 
     # save train results
     trainer.log_metrics("train", train_metrics)
     trainer.save_metrics("train", train_metrics)
 
-    # compute evaluation results
+    # compute evaluation results over test set
     test_metrics = trainer.evaluate(eval_dataset=tokenized_datasets_sst2["validation"], metric_key_prefix="test")
 
     # save evaluation results
