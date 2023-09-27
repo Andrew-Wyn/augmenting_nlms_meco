@@ -28,7 +28,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 
 
-from gaze.utils import Config, LOGGER
+from anm.utils import Config, LOGGER
 
 
 # TODO: capire perche se non setto cache_dir in AutoTokenizer
