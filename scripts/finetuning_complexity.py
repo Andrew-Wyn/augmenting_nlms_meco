@@ -139,12 +139,7 @@ if __name__ == "__main__":
         os.makedirs(args.output_dir)
 
     # development dataset loading
-    dev_dataset = read_complexity_dataset(args.dev_dataset)
-    
-    # split development in train valid
-    dev_dataset = dev_dataset.train_test_split(test_size=0.25)
-    train_dataset = dev_dataset["train"]
-    valid_dataset = dev_dataset["test"]
+    train_dataset = read_complexity_dataset(args.dev_dataset)
 
     # test dataset loading
     test_dataset = read_complexity_dataset(args.test_dataset)
@@ -157,7 +152,6 @@ if __name__ == "__main__":
         return tokenizer(examples["text"], truncation=True)
     
     tokenized_train_ds = train_dataset.map(preprocess_function, batched=True)
-    tokenized_valid_ds = valid_dataset.map(preprocess_function, batched=True)
     tokenized_test_ds = test_dataset.map(preprocess_function, batched=True)
 
     """
@@ -171,16 +165,16 @@ if __name__ == "__main__":
         output_dir=args.output_dir,          # output directory
         num_train_epochs=cf.n_epochs,              # total number of training epochs
         per_device_train_batch_size=cf.train_bs,  # batch size per device during training
-        per_device_eval_batch_size=cf.eval_bs,   # batch size for evaluation
+#        per_device_eval_batch_size=cf.eval_bs,   # batch size for evaluation
         warmup_steps=500,                # number of warmup steps for learning rate scheduler
         weight_decay=cf.weight_decay,               # strength of weight decay
-        save_strategy="epoch",
-        evaluation_strategy="epoch",
+#        save_strategy="epoch",
+#        evaluation_strategy="epoch",
         learning_rate=cf.lr,
-        load_best_model_at_end = True,  
-        metric_for_best_model = 'rmse',
-        save_total_limit = 1, # Only last model are saved. Older ones are deleted.
-        greater_is_better = False
+#        load_best_model_at_end = True,  
+#        metric_for_best_model = 'rmse',
+#        save_total_limit = 1, # Only last model are saved. Older ones are deleted.
+#        greater_is_better = False
     )
 
     """
@@ -205,28 +199,25 @@ if __name__ == "__main__":
         model=model,                         # the instantiated 🤗 Transformers model to be trained
         args=training_args,                  # training arguments, defined above
         train_dataset=tokenized_train_ds,         # training dataset
-        eval_dataset=tokenized_valid_ds,            # evaluation dataset
+#        eval_dataset=tokenized_test_ds,            # evaluation dataset
         compute_metrics=compute_metrics_for_regression,
         tokenizer = tokenizer,
         data_collator=data_collator,
-        callbacks = [EarlyStoppingCallback(early_stopping_patience=cf.patience)]
+#        callbacks = [EarlyStoppingCallback(early_stopping_patience=cf.patience)]
     )
 
     train_result = trainer.train()
 
     # compute train results
-    metrics = train_result.metrics
+    # metrics = train_result.metrics
 
+
+    # compute evaluation results
+    train_metrics = trainer.evaluate(eval_dataset=tokenized_train_ds, metric_key_prefix="train")
     # save train results
-    trainer.log_metrics("train", metrics)
-    trainer.save_metrics("train", metrics)
+    trainer.log_metrics("train", train_metrics)
+    trainer.save_metrics("train", train_metrics)
 
-    # save evaluation results
-    valid_metrics = trainer.evaluate(eval_dataset=tokenized_valid_ds)
-
-    # save evaluation results
-    trainer.log_metrics("valid", valid_metrics)
-    trainer.save_metrics("valid", valid_metrics)
 
     # compute evaluation results
     test_metrics = trainer.evaluate(eval_dataset=tokenized_test_ds, metric_key_prefix="test")
