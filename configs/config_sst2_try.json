@@ -1,0 +1,7 @@
+{
+    "weight_decay": 1e-2,
+    "train_bs": 8,
+    "n_epochs": 3,
+    "seed": 1234,
+    "lr": 2e-05
+}
