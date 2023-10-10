@@ -35,6 +35,8 @@ def main():
                         help=f'Relative path of output directory')
     parser.add_argument('-d', '--dataset', dest='dataset', action='store',
                         help=f'Relative path of dataset folder, containing the .csv file')
+    parser.add_argument("-p", "--partial-finetuning", dest="partial_finetuning", default=False, action='store_true',
+                        help=f'partial finetuning')
 
     # Read the script's argumenents
     args = parser.parse_args()
@@ -65,13 +67,13 @@ def main():
     gaze_dataset = _create_senteces_from_data(data, modeling_cf.tasks)
 
     # --- 10-Fold Cross Validation
-    loss_tr_mean, loss_ts_mean = cross_validation(cf, gaze_dataset, tokenizer, DEVICE, writer, k_folds=cf.k_folds)
+    loss_tr_mean, loss_ts_mean = cross_validation(cf, gaze_dataset, tokenizer, DEVICE, writer, args.partial_finetuning, k_folds=cf.k_folds)
 
     # --- Final Retraining
 
     dataloader = minmax_preprocessing(cf, gaze_dataset, tokenizer)
 
-    model = load_model_from_hf(cf.model_type, cf.model_name, cf.pretrained)
+    model = load_model_from_hf(cf.model_type, cf.model_name, cf.pretrained, args.partial_finetuning)
 
     # optimizer
     optim = create_finetuning_optimizer(cf, model)

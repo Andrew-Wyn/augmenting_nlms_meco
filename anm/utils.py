@@ -58,7 +58,7 @@ def create_scheduler(cf, optim, dl):
     return get_linear_schedule_with_warmup(optim, num_warmup_steps=0, num_training_steps=n_iters)
 
 
-def load_model_from_hf(model_type, model_name, pretrained):
+def load_model_from_hf(model_type, model_name, pretrained, partial_finetuning):
     cf = Config.load_json("configs/modeling_configuration.json")
     config = AutoConfig.from_pretrained(model_name)
     config.update({"tasks": cf.tasks})
@@ -88,5 +88,18 @@ def load_model_from_hf(model_type, model_name, pretrained):
             model = XLMRobertaForMultiTaskTokenClassification.from_pretrained(model_name, config=config)
         elif model_type == "Camembert":
             model = CamembertForMultiTaskTokenClassification.from_pretrained(model_name, config=config)
+
+    if partial_finetuning:
+        freeze_model(model)
+
+    return model
+
+
+def freeze_model(model):
+    for name, param in model.roberta.named_parameters():
+        if "encoder.layer.0" in name:
+            param.requires_grad = True
+        else:
+            param.requires_grad = False
 
     return model
