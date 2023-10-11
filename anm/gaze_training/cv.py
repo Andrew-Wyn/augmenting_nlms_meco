@@ -7,7 +7,7 @@ from sklearn.model_selection import KFold
 from anm.gaze_dataloader.dataset import minmax_preprocessing
 
 
-def cross_validation(cf, dataset, tokenizer, DEVICE, writer, full_finetuning, k_folds=10):
+def cross_validation(cf, dataset, tokenizer, DEVICE, writer, partial_finetuning, k_folds=10):
     """
         Perform a k-fold cross-validation
 
@@ -44,7 +44,7 @@ def cross_validation(cf, dataset, tokenizer, DEVICE, writer, full_finetuning, k_
 
         LOGGER.info("Load the model from HF...")
         # Model
-        model = load_model_from_hf(cf.model_type, cf.model_name, cf.pretrained, full_finetuning)
+        model = load_model_from_hf(cf.model_type, cf.model_name, cf.pretrained, partial_finetuning)
 
         # optimizer
         optim = create_finetuning_optimizer(cf, model)
