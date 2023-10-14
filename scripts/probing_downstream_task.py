@@ -8,7 +8,7 @@ import pandas as pd
 
 from datasets import Dataset
 
-from anm.utils import LOGGER, Config, load_model_from_hf
+from anm.utils import LOGGER, Config
 from anm.gaze_probing.downstream_prober import DownstreamProber
 from transformers import (
     AutoModelForSequenceClassification,
@@ -16,6 +16,8 @@ from transformers import (
     AutoConfig,
     set_seed,
 )
+
+from datasets import load_dataset
 
 from transformers import DataCollatorWithPadding
 
@@ -107,23 +109,40 @@ def main():
     # Tokenizer
     tokenizer = AutoTokenizer.from_pretrained(args.model_name)
 
-    # DataLoader
-    # development dataset loading
-    train_dataset = read_complexity_dataset(args.train_dataset)
+    if args.train_dataset == "sst2":
+        dataset_sst2 = load_dataset("sst2", cache_dir=CACHE_DIR)
+        train_dataset = dataset_sst2["train"]
+        test_dataset = dataset_sst2["valid"]
 
-    # test dataset loading
-    test_dataset = read_complexity_dataset(args.test_dataset)
+        # Tokenizer
+        tokenizer = AutoTokenizer.from_pretrained(args.model_name, cache_dir=CACHE_DIR)
 
-    # Tokenizer
-    tokenizer = AutoTokenizer.from_pretrained(args.model_name, cache_dir=CACHE_DIR)
+        # Tokenize datasets
+        def preprocess_function(examples):
+            return tokenizer(examples["sentence"], truncation=True)
+        
+        tokenized_train_ds = train_dataset.map(preprocess_function, batched=True,
+                                            remove_columns=["sentence"])
+        tokenized_test_ds = test_dataset.map(preprocess_function, batched=True,
+                                         remove_columns=["sentence"])
+    else:
+        # DataLoader
+        # development dataset loading
+        train_dataset = read_complexity_dataset(args.train_dataset)
 
-    # Tokenize datasets
-    def preprocess_function(examples):
-        return tokenizer(examples["text"], truncation=True)
-    
-    tokenized_train_ds = train_dataset.map(preprocess_function, batched=True,
-                                           remove_columns=["text"])
-    tokenized_test_ds = test_dataset.map(preprocess_function, batched=True,
+        # test dataset loading
+        test_dataset = read_complexity_dataset(args.test_dataset)
+
+        # Tokenizer
+        tokenizer = AutoTokenizer.from_pretrained(args.model_name, cache_dir=CACHE_DIR)
+
+        # Tokenize datasets
+        def preprocess_function(examples):
+            return tokenizer(examples["text"], truncation=True)
+        
+        tokenized_train_ds = train_dataset.map(preprocess_function, batched=True,
+                                            remove_columns=["text"])
+        tokenized_test_ds = test_dataset.map(preprocess_function, batched=True,
                                          remove_columns=["text"])
 
     data_collator = DataCollatorWithPadding(tokenizer)
