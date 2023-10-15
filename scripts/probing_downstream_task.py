@@ -87,8 +87,8 @@ def main():
                         help=f'Relative path of dataset folder, containing the .csv file')
     parser.add_argument('-m', '--model-name', dest='model_name', action='store',
                         help=f'Relative path of dataset folder, containing the .csv file')
-
-
+    parser.add_argument('-mt', '--model-type', dest='model_type', action='store',
+                        help=f'Relative path of dataset folder, containing the .csv file')
 
     # Load the script's arguments
     args = parser.parse_args()
@@ -103,28 +103,25 @@ def main():
     # Load config file
     cf = Config.load_json(config_file)
 
+    # Tokenizer
+    tokenizer = AutoTokenizer.from_pretrained(args.model_type, cache_dir=CACHE_DIR)
+
     # set seed
     set_seed(cf.seed)
-
-    # Tokenizer
-    tokenizer = AutoTokenizer.from_pretrained(args.model_name)
 
     if args.train_dataset == "sst2":
         dataset_sst2 = load_dataset("sst2", cache_dir=CACHE_DIR)
         train_dataset = dataset_sst2["train"]
-        test_dataset = dataset_sst2["valid"]
-
-        # Tokenizer
-        tokenizer = AutoTokenizer.from_pretrained(args.model_name, cache_dir=CACHE_DIR)
+        test_dataset = dataset_sst2["validation"]
 
         # Tokenize datasets
         def preprocess_function(examples):
             return tokenizer(examples["sentence"], truncation=True)
         
         tokenized_train_ds = train_dataset.map(preprocess_function, batched=True,
-                                            remove_columns=["sentence"])
+                                            remove_columns=["sentence", "idx"])
         tokenized_test_ds = test_dataset.map(preprocess_function, batched=True,
-                                         remove_columns=["sentence"])
+                                         remove_columns=["sentence", "idx"])
     else:
         # DataLoader
         # development dataset loading
@@ -132,9 +129,6 @@ def main():
 
         # test dataset loading
         test_dataset = read_complexity_dataset(args.test_dataset)
-
-        # Tokenizer
-        tokenizer = AutoTokenizer.from_pretrained(args.model_name, cache_dir=CACHE_DIR)
 
         # Tokenize datasets
         def preprocess_function(examples):
@@ -151,7 +145,7 @@ def main():
 
     # Model
     LOGGER.info("Model retrieving, from hf...")
-    model = load_model_from_hf(cf.model_name, cf.pretrained)
+    model = load_model_from_hf(args.model_name, cf.pretrained)
 
     prober = DownstreamProber(dl_train, dl_test, output_dir)
 
