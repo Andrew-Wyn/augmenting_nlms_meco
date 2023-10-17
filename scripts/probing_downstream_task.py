@@ -72,7 +72,7 @@ def read_complexity_dataset(path=None):
 
 
 def read_sentipolc_dataset(src_path, task):
-    dataset_dict = {'text': [], 'label_pos': [], 'label_neg': []}
+    dataset_dict = {'text': [], 'label': []}
     with open(src_path) as src_file:
         csv_reader = csv.reader(src_file, delimiter=',', quotechar='"')
         print('')
