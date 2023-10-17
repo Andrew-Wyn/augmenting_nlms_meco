@@ -113,6 +113,8 @@ def main():
                         help=f'Relative path of dataset folder, containing the .csv file')
     parser.add_argument('-mt', '--model-type', dest='model_type', action='store',
                         help=f'Relative path of dataset folder, containing the .csv file')
+    parser.add_argument('-j', '--job', dest='job', action='store',
+                        help=f'Relative path of dataset folder, containing the .csv file')
 
     # Load the script's arguments
     args = parser.parse_args()
@@ -133,7 +135,7 @@ def main():
     # set seed
     set_seed(cf.seed)
 
-    if args.train_dataset == "sst2":
+    if args.job == "sst2":
         dataset_sst2 = load_dataset("sst2", cache_dir=CACHE_DIR)
         train_dataset = dataset_sst2["train"]
         test_dataset = dataset_sst2["validation"]
@@ -146,7 +148,7 @@ def main():
                                             remove_columns=["sentence", "idx"])
         tokenized_test_ds = test_dataset.map(preprocess_function, batched=True,
                                          remove_columns=["sentence", "idx"])
-    elif args.train_dataset == "sentipolc_pos":
+    elif args.job == "sentipolc_pos":
         train_dataset = read_sentipolc_dataset(args.train_dataset, "pos")
         test_dataset = read_sentipolc_dataset(args.test_dataset, "pos")
         
@@ -159,7 +161,7 @@ def main():
         tokenized_test_ds = test_dataset.map(preprocess_function, batched=True,
                                          remove_columns=["text"])
 
-    elif args.train_dataset == "sentipolc_neg":
+    elif args.job == "sentipolc_neg":
         train_dataset = read_sentipolc_dataset(args.train_dataset, "neg")
         test_dataset = read_sentipolc_dataset(args.test_dataset, "neg")
         
