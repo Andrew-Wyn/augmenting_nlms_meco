@@ -17,6 +17,8 @@ from transformers import (
     set_seed,
 )
 
+import csv
+
 from datasets import load_dataset
 
 from transformers import DataCollatorWithPadding
@@ -67,6 +69,28 @@ def read_complexity_dataset(path=None):
 
 
     return Dataset.from_list(data)
+
+
+def read_sentipolc_dataset(src_path, task):
+    dataset_dict = {'text': [], 'label_pos': [], 'label_neg': []}
+    with open(src_path) as src_file:
+        csv_reader = csv.reader(src_file, delimiter=',', quotechar='"')
+        print('')
+        for row in csv_reader:
+            if row[0] == 'idtwitter':
+                continue
+            if len(row) != 9:
+                cut_row = row[:9]
+                cut_row[8] += ',' + ', '.join(row[9:])
+                row = cut_row
+            dataset_dict['text'].append(row[8])
+
+            if task == "pos":
+                dataset_dict['label'].append(int(row[2])) # pos
+            else:
+                dataset_dict['label'].append(int(row[3])) # neg
+
+    return Dataset.from_dict(dataset_dict)
 
 
 # TODO: capire perche se non setto cache_dir in AutoTokenizer
@@ -122,6 +146,31 @@ def main():
                                             remove_columns=["sentence", "idx"])
         tokenized_test_ds = test_dataset.map(preprocess_function, batched=True,
                                          remove_columns=["sentence", "idx"])
+    elif args.train_dataset == "sentipolc_pos":
+        train_dataset = read_sentipolc_dataset(args.train_dataset, "pos")
+        test_dataset = read_sentipolc_dataset(args.test_dataset, "pos")
+        
+        # Tokenize datasets
+        def preprocess_function(examples):
+            return tokenizer(examples["text"], truncation=True)
+        
+        tokenized_train_ds = train_dataset.map(preprocess_function, batched=True,
+                                            remove_columns=["text"])
+        tokenized_test_ds = test_dataset.map(preprocess_function, batched=True,
+                                         remove_columns=["text"])
+
+    elif args.train_dataset == "sentipolc_neg":
+        train_dataset = read_sentipolc_dataset(args.train_dataset, "neg")
+        test_dataset = read_sentipolc_dataset(args.test_dataset, "neg")
+        
+        # Tokenize datasets
+        def preprocess_function(examples):
+            return tokenizer(examples["text"], truncation=True)
+        
+        tokenized_train_ds = train_dataset.map(preprocess_function, batched=True,
+                                            remove_columns=["text"])
+        tokenized_test_ds = test_dataset.map(preprocess_function, batched=True,
+                                         remove_columns=["text"])
     else:
         # DataLoader
         # development dataset loading
