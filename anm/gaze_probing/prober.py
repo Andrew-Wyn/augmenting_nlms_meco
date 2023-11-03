@@ -10,11 +10,20 @@ from sklearn.neural_network import MLPRegressor
 from sklearn.svm import SVR
 from sklearn.linear_model import Ridge
 from sklearn.preprocessing import MinMaxScaler
-from sklearn.metrics import mean_absolute_error
+from sklearn.metrics import mean_absolute_error, mean_squared_error, accuracy_score, r2_score
+from scipy import stats
 from sklearn.model_selection import KFold
 
 from tqdm import tqdm
 
+
+def binary_accuracy(targets, predicted, thr):
+    thresholded = np.array(predicted) 
+
+    thresholded[thresholded >= thr] = 100
+    thresholded[thresholded < thr] = 0
+
+    return accuracy_score(targets, thresholded)
 
 class Prober():
     """
@@ -93,7 +102,7 @@ class Prober():
         return probing_dataset
 
 
-    def _apply_model(self, inputs, targets, linear = True, k_folds=10):
+    def _apply_model(self, inputs, targets, label, linear = True, k_folds=10):
         """
             Apply the model over a (input, targets) pair, to test the model a cross-validation technique is used.
 
@@ -107,8 +116,19 @@ class Prober():
                 loss_tr_mean (float): averaged losses over train datasets
                 loss_ts_mean (float): averaged losses over test datasets
         """
-        loss_tr_mean = 0
-        loss_ts_mean = 0
+        loss_tr_mean = {
+            "mse": 0,
+            "mae": 0,
+            "r2" : 0,
+            "acc_corr": 0
+        }
+
+        loss_ts_mean = {
+            "mse": 0,
+            "mae": 0,
+            "r2" : 0,
+            "acc_corr": 0
+        }
 
         folds = KFold(n_splits=k_folds)
 
@@ -141,14 +161,30 @@ class Prober():
             predicted_train = regr.predict(train_inputs)
             predicted_test = regr.predict(test_inputs)
 
-            loss_tr_mean += mean_absolute_error(train_targets, predicted_train)
+            # Mean Absolute Error
+            loss_tr_mean["mae"] += mean_absolute_error(train_targets, predicted_train)
+            loss_ts_mean["mae"] += mean_absolute_error(test_targets, predicted_test)
 
-            loss_ts_mean += mean_absolute_error(test_targets, predicted_test)
+            # Mean Squared Error
+            loss_tr_mean["mse"] += mean_squared_error(train_targets, predicted_train)
+            loss_ts_mean["mse"] += mean_squared_error(test_targets, predicted_test)
 
-        loss_tr_mean /= k_folds
-        loss_ts_mean /= k_folds
+            # R2 score
+            loss_tr_mean["r2"] += r2_score(train_targets, predicted_train)
+            loss_ts_mean["r2"] += r2_score(test_targets, predicted_test)
 
-        return loss_tr_mean, loss_ts_mean
+            if label in ["skip", "reread", "refix"]: # accuracy
+                loss_tr_mean["acc_corr"] += binary_accuracy(train_targets, predicted_train, 50)
+                loss_ts_mean["acc_corr"] += binary_accuracy(test_targets, predicted_test, 50)
+            else: # correlation
+                loss_tr_mean["acc_corr"] += stats.spearmanr(train_targets, predicted_train).statistic
+                loss_ts_mean["acc_corr"] += stats.spearmanr(test_targets, predicted_test).statistic
+
+        for k in loss_tr_mean.keys():
+            loss_tr_mean[k] /= k_folds
+            loss_ts_mean[k] /= k_folds
+
+        return inputs, targets, loss_tr_mean, loss_ts_mean
 
 
     def probe(self, linear, k_folds):
@@ -167,17 +203,21 @@ class Prober():
 
         metrics["linear"] = linear
 
+
+
         for layer, layer_input in tqdm(self.probing_dataset["layers"].items()):
             # LOGGER.info(f"Cross Validation layer : {layer} ...")
 
             metrics[layer] = {}
 
             for label, label_target in self.probing_dataset["labels"].items():
-                score_train, score_test = self._apply_model(layer_input, label_target, linear, k_folds)
+                label_inputs, label_targets, score_train, score_test = self._apply_model(layer_input, label_target, label, linear, k_folds)
 
                 metrics[layer].update({
-                    f"{label}_score_train" : score_train.tolist(),
-                    f"{label}_score_test" : score_test.tolist()
+                    #f"{label}_inputs" : label_inputs.tolist(),
+                    #f"{label}_targets" : label_targets.tolist(),
+                    f"{label}_score_train" : score_train,
+                    f"{label}_score_test" : score_test
                 })
 
                 # LOGGER.info(f"Scores layer - {layer} :")

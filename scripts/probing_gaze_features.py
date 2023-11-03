@@ -32,13 +32,14 @@ def main():
                         help=f'Relative path of output directory')
     parser.add_argument('-d', '--dataset', dest='dataset', action='store',
                         help=f'Relative path of dataset folder, containing the .csv file')
+    parser.add_argument('-p', '--pretrained', dest='pretrained', default=False, action='store_true',
+                        help=f'Bool, start from a pretrained model')
 
     # Load the script's arguments
     args = parser.parse_args()
 
     config_file = args.config_file
     output_dir = args.output_dir
-    dataset = args.dataset
 
     # check if the output directory exists, if not create it!
     if not os.path.exists(output_dir):
@@ -61,7 +62,7 @@ def main():
 
     # Model
     LOGGER.info("Model retrieving, from hf...")
-    model = load_model_from_hf(cf.model_type, cf.model_name, cf.pretrained)
+    model = load_model_from_hf(cf.model_type, cf.model_name, args.pretrained, partial_finetuning=False)
 
     prober = Prober(dataloader, output_dir)
 
