@@ -117,17 +117,17 @@ class Prober():
                 loss_ts_mean (float): averaged losses over test datasets
         """
         loss_tr_mean = {
-            "mse": 0,
-            "mae": 0,
-            "r2" : 0,
-            "acc_corr": 0
+            "mse": [],
+            "mae": [],
+            "r2" : [],
+            "acc_corr": []
         }
 
         loss_ts_mean = {
-            "mse": 0,
-            "mae": 0,
-            "r2" : 0,
-            "acc_corr": 0
+            "mse": [],
+            "mae": [],
+            "r2" : [],
+            "acc_corr": []
         }
 
         folds = KFold(n_splits=k_folds)
@@ -140,8 +140,8 @@ class Prober():
         for train_idx, test_idx in splits:
             train_inputs = inputs[train_idx]
             test_inputs = inputs[test_idx]
-
             train_targets = targets[train_idx]
+
             test_targets = targets[test_idx]
 
             # min max scaler the targets
@@ -162,27 +162,33 @@ class Prober():
             predicted_test = regr.predict(test_inputs)
 
             # Mean Absolute Error
-            loss_tr_mean["mae"] += mean_absolute_error(train_targets, predicted_train)
-            loss_ts_mean["mae"] += mean_absolute_error(test_targets, predicted_test)
+            loss_tr_mean["mae"].append(mean_absolute_error(train_targets, predicted_train))
+            loss_ts_mean["mae"].append(mean_absolute_error(test_targets, predicted_test))
 
             # Mean Squared Error
-            loss_tr_mean["mse"] += mean_squared_error(train_targets, predicted_train)
-            loss_ts_mean["mse"] += mean_squared_error(test_targets, predicted_test)
+            loss_tr_mean["mse"].append(mean_squared_error(train_targets, predicted_train))
+            loss_ts_mean["mse"].append(mean_squared_error(test_targets, predicted_test))
 
             # R2 score
-            loss_tr_mean["r2"] += r2_score(train_targets, predicted_train)
-            loss_ts_mean["r2"] += r2_score(test_targets, predicted_test)
+            loss_tr_mean["r2"].append(r2_score(train_targets, predicted_train))
+            loss_ts_mean["r2"].append(r2_score(test_targets, predicted_test))
 
             if label in ["skip", "reread", "refix"]: # accuracy
-                loss_tr_mean["acc_corr"] += binary_accuracy(train_targets, predicted_train, 50)
-                loss_ts_mean["acc_corr"] += binary_accuracy(test_targets, predicted_test, 50)
+                loss_tr_mean["acc_corr"].append(binary_accuracy(train_targets, predicted_train, 50))
+                loss_ts_mean["acc_corr"].append(binary_accuracy(test_targets, predicted_test, 50))
             else: # correlation
-                loss_tr_mean["acc_corr"] += stats.spearmanr(train_targets, predicted_train).statistic
-                loss_ts_mean["acc_corr"] += stats.spearmanr(test_targets, predicted_test).statistic
+                stat_tr = stats.spearmanr(train_targets, predicted_train)
+                stat_ts = stats.spearmanr(test_targets, predicted_test)
+
+                if stat_tr.pvalue < 0.05:
+                    loss_tr_mean["acc_corr"].append(stat_tr.statistic)
+                
+                if stat_ts.pvalue < 0.05:
+                loss_ts_mean["acc_corr"].append(stat_ts.statistic)
 
         for k in loss_tr_mean.keys():
-            loss_tr_mean[k] /= k_folds
-            loss_ts_mean[k] /= k_folds
+            loss_tr_mean[k] = np.mean(loss_tr_mean[k])
+            loss_ts_mean[k] = np.mean(loss_ts_mean[k])
 
         return inputs, targets, loss_tr_mean, loss_ts_mean
 
