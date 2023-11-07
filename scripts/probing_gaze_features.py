@@ -8,6 +8,9 @@ import pandas as pd
 
 import torch
 
+from anm.gaze_dataloader.datacollator import DataCollatorForMultiTaskTokenClassification
+from torch.utils.data import DataLoader
+
 from anm.utils import LOGGER, Config, load_model_from_hf
 from anm.gaze_probing.prober import Prober
 from anm.gaze_dataloader.dataset import _create_senteces_from_data, create_tokenize_and_align_labels_map
@@ -59,16 +62,18 @@ def main():
     modeling_cf = Config.load_json("configs/modeling_configuration.json")
     gaze_dataset = _create_senteces_from_data(data, modeling_cf.tasks)
 
+    features = [col_name for col_name in gaze_dataset.column_names if col_name.startswith('label_')]
+
     ## Align labels
-    tokenized_dataset = dataset.map(
+    tokenized_dataset = gaze_dataset.map(
                 create_tokenize_and_align_labels_map(tokenizer, features),
                 batched=True,
-                remove_columns=dataset.column_names,
+                remove_columns=gaze_dataset.column_names,
     )
     
     ## DataCollator
     data_collator = DataCollatorForMultiTaskTokenClassification(tokenizer)
-    dl = DataLoader(tokenized_dataset, shuffle=True, collate_fn=data_collator, batch_size=cf.train_bs)
+    dataloader = DataLoader(tokenized_dataset, shuffle=True, collate_fn=data_collator, batch_size=cf.train_bs)
 
     # Model
     LOGGER.info("Model retrieving, from hf...")
