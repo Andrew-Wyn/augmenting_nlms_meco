@@ -12,31 +12,37 @@ import torch
 
 
 def get_model_path(language_mode, training_mode, language, finetuned_models_dir, user_id=None):
-    if training_mode == 'pretrained_not_finetuned':
-        if language_mode == 'cross_lingual':
-            return 'xlm-roberta-base'
-        elif language == 'it':
-            return 'idb-ita/gilberto-uncased-from-camembert'
+    # if 'not_finetuned' in training_mode:
+    #     if language_mode == 'cross_lingual':
+    #         return 'xlm-roberta-base'
+    #     elif language == 'it':
+    #         return 'idb-ita/gilberto-uncased-from-camembert'
+    #     else:
+    #         return 'roberta-base'
+    # else:
+    pretrained = 'np' if 'not_pretrained' in training_mode else 'p'
+    finetuned =  'nf' if 'not_finetuned' in training_mode else f'f_{language}{user_id}' 
+    if language_mode == 'cross_lingual':
+        if finetuned == 'nf':
+            model_string = f'xlm_{language}'
         else:
-            return 'roberta-base'
-    else:
-        pretrained = 'p' if training_mode == 'pretrained_finetuned' else 'np'
-        if language_mode == 'cross_lingual':
             model_string = 'xlm'
-        elif language == 'it':
-            model_string = 'camem'
-        else:
-            model_string = 'roberta'
-        model_dir = f'{finetuned_models_dir}/gaze_finetuning_{language}_{user_id}_{pretrained}_{model_string}'
-        for file_name in os.listdir(model_dir):
-            file_path = os.path.join(model_dir, file_name)
-            if file_name != 'tf_logs' and os.path.isdir(file_path):
-                if 'config.json' in os.listdir(file_path):
-                    model_path = file_path
-                else:
-                    inner_dir = os.listdir(file_path)[0]
-                    model_path = os.path.join(file_path, inner_dir)
-        return model_path
+    elif language == 'it':
+        model_string = 'camem'
+    else:
+        model_string = 'roberta'
+    # model_dir = f'{finetuned_models_dir}/gaze_finetuning_{language}_{user_id}_{pretrained}_{model_string}'
+    model_dir = f'{model_string}_{pretrained}_{finetuned}'
+    model_path = os.path.join(finetuned_models_dir, model_dir)
+    # for file_name in os.listdir(model_dir):
+    #     file_path = os.path.join(model_dir, file_name)
+    #     if file_name != 'tf_logs' and os.path.isdir(file_path):
+    #         if 'config.json' in os.listdir(file_path):
+    #             model_path = file_path
+    #         else:
+    #             inner_dir = os.listdir(file_path)[0]
+    #             model_path = os.path.join(file_path, inner_dir)
+    return model_path
 
 def get_tokenizer_name(model_name):
     if 'xlm' in model_name:
@@ -54,7 +60,6 @@ def extract_attention(method, gaze_dataset, model_name, out_path, layer, rollout
     sentence_alignment_dict = create_subwords_alignment(gaze_dataset, tokenizer, subword_prefix, lowercase)
 
     if 'valuezeroing' in method:
-        print('valuezeroing', rollout)
         attn_extractor = ValueZeroingContributionExtractor(model_name, layer, rollout, 'first', random_init)
     elif method == 'alti':
         attn_extractor = AltiContributionExtractor(model_name, layer, rollout, 'first', random_init)
@@ -65,27 +70,51 @@ def extract_attention(method, gaze_dataset, model_name, out_path, layer, rollout
 
     save_dictionary(sentences_contribs, out_path)
 
+def get_languages(task):
+    if task == 'sentipolc':
+        return ['it']
+    elif task == 'sst2':
+        return ['en']
+    else:
+        return ['it', 'en']
+
+
+def get_src_dir(task):
+    if task == 'sst2':
+        return '/home/lmoroni/__workdir/augmenting_nlms_meco/output/sst2'
+    elif task == 'complexity':
+        return '/home/lmoroni/__workdir/augmenting_nlms_meco/output/complexity'
+    elif task == 'complexity_binary':
+        return '/home/lmoroni/__workdir/augmenting_nlms_meco/output/complexity_binary'
+    elif task == 'sentipolc':
+        return '/home/luca/Workspace/augmenting_nlms_meco/output/sentipolc'
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('-m', '--method', choices=['valuezeroing', 'alti', 'attention', 'valuezeroing_rollout'])
+    parser.add_argument('-t', '--task', choices=['sst2', 'sentipolc', 'complexity', 'complexity_binary'])
     args = parser.parse_args()
 
     rollout = True if args.method == 'valuezeroing_rollout' else False
 
     language_modes = ['mono_lingual', 'cross_lingual']
-    training_modes = ['pretrained_not_finetuned', 'pretrained_finetuned', 'not_pretrained_finetuned', 'not_pretrained_not_finetuned']
-    languages = ['en', 'it']
+    training_modes = ['not_pretrained_not_finetuned']#['not_pretrained_finetuned', 'not_pretrained_not_finetuned', 'pretrained_not_finetuned', 'pretrained_finetuned']
+    languages = get_languages(args.task)
 
+    
     eye_tracking_data_dir = 'augmenting_nlms_meco_data/'
-    finetuned_models_dir = '/home/lmoroni/__workdir/augmenting_nlms_meco/output'
-    attn_results_dir = 'output/attn_data/base/'
+    attn_results_dir = f'output/attn_data/{args.task}'
+    finetuned_models_dir = get_src_dir(args.task)
+
+    if not os.path.exists(attn_results_dir):
+        os.mkdir(attn_results_dir)
 
     print(f'METHOD: {args.method}')
     for language in languages:
         print(f'LANGUAGE: {language}')
         language_src_dir = os.path.join(eye_tracking_data_dir, language)
         for file_name in [file_name for file_name in os.listdir(language_src_dir) if
-                          file_name not in ['all_mean_dataset.csv', '.ipynb_checkpoints']]:
+                          file_name not in ['.ipynb_checkpoints', 'all_mean_dataset.csv']]:
             user_id = file_name.split('_')[1]
             data = pd.read_csv(os.path.join(language_src_dir, file_name), index_col=0)
             gaze_dataset = _create_senteces_from_data(data, [], keep_id=True)
@@ -94,18 +123,20 @@ def main():
                 print(f'LANGUAGE MODE: {language_mode}')
                 for training_mode in training_modes:
                     print(f'TRAINING MODE: {training_mode}')
-                    random_init = True if training_mode == 'not_pretrained_not_finetuned' else False
+                    random_init = False
                     out_dir = os.path.join(attn_results_dir, args.method, language, language_mode, training_mode,
                                            user_id)
                     if not os.path.exists(out_dir):
                         os.makedirs(out_dir)
                     model_path = get_model_path(language_mode, training_mode, language, finetuned_models_dir, user_id)
+                    print(f'MODEL PATH: {model_path}')
+                    print(f'OUT DIR: {out_dir}')
+                    print('____________________________________')
                     for layer in range(12):
                         out_path = os.path.join(out_dir, f'{layer}.json')
-                        if not os.path.exists(out_path):
-                            extract_attention(args.method, gaze_dataset, model_path, out_path, layer, rollout, lowercase, random_init)
-
-
+                        #if not os.path.exists(out_path):
+                        random_init = False
+                        extract_attention(args.method, gaze_dataset, model_path, out_path, layer, rollout, lowercase, random_init)
 
 
 

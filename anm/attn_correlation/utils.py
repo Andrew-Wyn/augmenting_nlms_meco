@@ -17,7 +17,8 @@ import os
 
 class TokenContributionExtractor(ABC):
 
-    def __init__(self, model_name: str, layer: int, rollout: bool, aggregation_method: str):
+    def __init__(self, model_name: str, layer: int, rollout: bool, aggregation_method: str, random_init: bool = False):
+        self.random_init = random_init
         self.layer = layer
         self.rollout = rollout
         self.aggregration_method = aggregation_method
@@ -80,11 +81,20 @@ class ValueZeroingContributionExtractor(TokenContributionExtractor, ABC):
     def _load_model(self, model_name: str):
         config = AutoConfig.from_pretrained(model_name)
         if 'xlm' in model_name:
-            model = XLMRobertaForMaskedLMVZ.from_pretrained(model_name, config=config)
+            if not self.random_init:
+                model = XLMRobertaForMaskedLMVZ.from_pretrained(model_name, config=config)
+            else:
+                model = XLMRobertaForMaskedLMVZ._from_config(config)
         elif 'roberta' in model_name:
-            model = RobertaForMaskedLMVZ.from_pretrained(model_name, config=config)
+            if not self.random_init:
+                model = RobertaForMaskedLMVZ.from_pretrained(model_name, config=config)
+            else:
+                model = RobertaForMaskedLMVZ._from_config(config)
         elif 'camembert' or 'gilberto' in model_name:
-            model = CamembertForMaskedLMVZ.from_pretrained(model_name, config=config)
+            if not self.random_init:
+                model = CamembertForMaskedLMVZ.from_pretrained(model_name, config=config)
+            else:
+                model = CamembertForMaskedLMVZ._from_config(config)
         else:
              model = None
         model.to(self.device)
@@ -165,7 +175,11 @@ class ValueZeroingContributionExtractor(TokenContributionExtractor, ABC):
 class AltiContributionExtractor(TokenContributionExtractor, ABC):
 
     def _load_model(self, model_name: str):
-        model = AutoModelForMaskedLM.from_pretrained(model_name)
+        config = AutoConfig.from_pretrained(model_name)
+        if not self.random_init:
+            model = AutoModelForMaskedLM.from_pretrained(model_name)
+        else:
+            model = AutoModelForMaskedLM.from_config(config)
         model.to(self.device)
         return ModelWrapper(model)
 
@@ -184,7 +198,12 @@ class AltiContributionExtractor(TokenContributionExtractor, ABC):
 class AttentionMatrixExtractor(TokenContributionExtractor, ABC):
 
     def _load_model(self, model_name: str):
-        model = AutoModel.from_pretrained(model_name, output_attentions=True)
+        config = AutoConfig.from_pretrained(model_name)
+        if not self.random_init:
+            model = AutoModelForMaskedLM.from_pretrained(model_name, output_attentions=True)
+        else:
+            config.output_attentions = True
+            model = AutoModelForMaskedLM.from_config(config) #, output_attentions=True)
         model.to(self.device)
         return model
 

@@ -1,6 +1,6 @@
 from transformers import PreTrainedTokenizerBase, DataCollatorForTokenClassification
+from typing import Optional, Union, List, Dict, Any
 from transformers.utils import PaddingStrategy
-from typing import Optional, Union
 
 
 class DataCollatorForMultiTaskTokenClassification(DataCollatorForTokenClassification):
@@ -63,4 +63,39 @@ class DataCollatorForMultiTaskTokenClassification(DataCollatorForTokenClassifica
         for label_name in labels_names:
                 batch['labels'][label_name[len('label_'):]] = torch.tensor(batch_labels_dict[label_name],
                                                                            dtype=torch.float32)
+        return batch
+
+
+class MultiLabelDataCollatorWithPadding:
+
+    def __init__(self, tokenizer, padding=True, max_length=None, pad_to_multiple_of=None, return_tensors = 'pt'):
+        self.tokenizer = tokenizer
+        self.padding = padding
+        self.max_length = max_length
+        self.pad_to_multiple_of = pad_to_multiple_of
+        self.return_tensors = return_tensors
+        
+    # tokenizer: PreTrainedTokenizerBase
+    # padding: Union[bool, str, PaddingStrategy] = True
+    # max_length: Optional[int] = None
+    # pad_to_multiple_of: Optional[int] = None
+    # return_tensors: str = "pt"
+
+    def __call__(self, features: List[Dict[str, Any]]) -> Dict[str, Any]:
+        
+        labels_names = [feat_name for feat_name in features[0].keys() if feat_name.startswith('label_')]
+
+        batch = self.tokenizer.pad(
+            features,
+            padding=self.padding,
+            max_length=self.max_length,
+            pad_to_multiple_of=self.pad_to_multiple_of,
+            return_tensors=self.return_tensors,
+        )
+
+        batch['labels'] = dict()
+        for label_name in labels_names:
+            batch['labels'][label_name[len('label_'):]] = batch[label_name]
+            del batch[label_name]
+   
         return batch
