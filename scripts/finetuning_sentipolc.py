@@ -1,15 +1,18 @@
 import sys
 import os
+from typing import Dict
 
 sys.path.append(os.path.abspath("."))
 
 from anm.modeling.multitask_xlm_roberta import XLMRobertaForMultiTaskSequenceClassification
 from anm.modeling.multitask_camembert import CamembertForMultiTaskSequenceClassification
-from transformers import AutoTokenizer, AutoConfig, get_scheduler
 from anm.gaze_dataloader.datacollator import MultiLabelDataCollatorWithPadding
+from anm.gaze_training.multitask_trainer import MultitaskTrainer
+from transformers import AutoTokenizer, AutoConfig, get_scheduler, TrainingArguments
 from torch.utils.data import DataLoader
 from datasets import Dataset
 from tqdm import tqdm
+import numpy as np
 import evaluate
 import argparse
 import torch
@@ -61,8 +64,9 @@ def prepare_datasets(dataset_dir, tokenizer):
 
 def get_finetuned_model_path(model_cf, finetuned_models_dir, user_id):
     model_str = 'xlm' if model_cf.language_mode == 'cross_lingual' else 'camem'
-    finetuned_str = 'p' if model_cf.finetuned else 'np'
+    finetuned_str = 'p' if model_cf.pretrained else 'np'
     model_dir = f'{finetuned_models_dir}/gaze_finetuning_it_{user_id}_{finetuned_str}_{model_str}'
+    model_path = None
     for file_name in os.listdir(model_dir):
         file_path = os.path.join(model_dir, file_name)
         if file_name != 'tf_logs' and os.path.isdir(file_path):
@@ -114,51 +118,12 @@ def load_model(model_cf, finetuned_models_dir=None, user_id=None):
     return model, model_name
 
 
-def evaluate_model(model, dataloader, split, all_metrics, pos_metrics, neg_metrics):
-    model.eval()
-
-    with torch.no_grad():
-        for batch in dataloader:
-            batch = {
-                "input_ids": batch["input_ids"].to(device),
-                "attention_mask": batch["attention_mask"].to(device),
-                "labels": {k: v.to(device) for k, v in batch["labels"].items()}
-            }
-
-            model_output = model(**batch)
-
-            for task in batch['labels']:
-                predictions = model_output.logits[task].argmax(dim=-1)
-                references = batch['labels'][task]
-                # for metric in metrics:
-                all_metrics.add_batch(predictions=predictions, references=references)
-                if task == 'pos':
-                    pos_metrics.add_batch(predictions=predictions, references=references)
-                elif task == 'neg':
-                    neg_metrics.add_batch(predictions=predictions, references=references)
-
-    all_res = all_metrics.compute()
-    pos_res = pos_metrics.compute()
-    neg_res = neg_metrics.compute()
-
-    res_dict = {}
-
-    for metric in all_res:
-        res_dict[f'{split}_{metric}'] = all_res[metric]
-    for metric in pos_res:
-        res_dict[f'{split}_pos_{metric}'] = pos_res[metric]
-    for metric in neg_res:
-        res_dict[f'{split}_neg_{metric}'] = neg_res[metric]
-
-    return res_dict
-
-
-def get_eval_metrics():
-    return evaluate.combine([
-        evaluate.load("accuracy"),
-        evaluate.load("f1"),
-        evaluate.load("precision"),
-        evaluate.load("recall")])
+# def get_eval_metrics():
+#     return evaluate.combine([
+#         evaluate.load("accuracy"),
+#         evaluate.load("f1"),
+#         evaluate.load("precision"),
+#         evaluate.load("recall")])
 
 
 def get_out_path(out_dir, model_cf):
@@ -170,11 +135,39 @@ def get_out_path(out_dir, model_cf):
     return os.path.join(out_dir, f'{model_str}_{pretrained}_{finetuned}')
 
 
+def _compute_all_metrics(res, task, preds, labels):
+    accuracy = evaluate.load("accuracy")
+    f1 = evaluate.load("f1")
+    precision = evaluate.load("precision")
+    recall = evaluate.load("recall")
+
+    res[f'{task}_precision'] = precision.compute(predictions=preds, references=labels, average="weighted")['precision']
+    res[f'{task}_recall'] = recall.compute(predictions=preds, references=labels, average="weighted")['recall']
+    res[f'{task}_f1'] = f1.compute(predictions=preds, references=labels, average="weighted")['f1']
+    res[f'{task}_accuracy'] = accuracy.compute(predictions=preds, references=labels)['accuracy']
+
+    return res
+
+
+def compute_metrics(p):
+    res = dict()
+    for task in p.label_ids.keys():
+        labels = p.label_ids[task]
+        preds = np.argmax(p.predictions[task], axis=1)
+        res = _compute_all_metrics(res, task, preds, labels)
+    labels = np.asarray([label for task in p.label_ids.keys() for label in p.label_ids[task]])
+    preds = np.asarray([label for task in p.label_ids.keys() for label in np.argmax(p.predictions[task], axis=1)])
+    task = 'all'
+    res = _compute_all_metrics(res, task, preds, labels)
+
+    return res
+
+
 class TrainingConfig:
 
     def __init__(self, args):
         self.weight_decay = 1e-2
-        self.lr = 2e-5 #5e-6
+        self.lr = 2e-5  # 5e-6
         self.train_bs = 8
         self.eval_bs = 8
         self.n_epochs = 8
@@ -204,17 +197,16 @@ def main():
     print(f'Finetuned = {cf.finetuned}')
     print(f'Language mode = {cf.language_mode}')
 
-
     dataset_dir = 'augmenting_nlms_meco_data/sentiment/it_sentipolc'
     finetuned_models_dir = '/home/lmoroni/__workdir/augmenting_nlms_meco/output'
     model_save_dir = 'output/sentipolc'
     out_path = get_out_path(model_save_dir, cf)
 
-    if os.path.exists(out_path):
-        return
+    # if os.path.exists(out_path):
+    #     return
 
     model, model_name = load_model(cf, finetuned_models_dir=finetuned_models_dir, user_id=cf.user_id)
-
+    
     try:
         tokenizer = AutoTokenizer.from_pretrained(model_name)
     except:
@@ -223,88 +215,43 @@ def main():
 
     train_dataset, test_dataset = prepare_datasets(dataset_dir, tokenizer)
     data_collator = MultiLabelDataCollatorWithPadding(tokenizer=tokenizer)
-    train_dataloader = DataLoader(train_dataset, shuffle=True, collate_fn=data_collator,
-                                  batch_size=cf.train_bs)
-    eval_dataloader = DataLoader(test_dataset, collate_fn=data_collator, batch_size=cf.eval_bs)
 
-    no_decay = ["bias", "LayerNorm.weight"]
-    optimizer_grouped_parameters = [
-        {
-            "params": [p for n, p in model.named_parameters() if not any(nd in n for nd in no_decay)],
-            "weight_decay": cf.weight_decay,
-        },
-        {
-            "params": [p for n, p in model.named_parameters() if any(nd in n for nd in no_decay)],
-            "weight_decay": 0.0,
-        },
-    ]
-    optimizer = torch.optim.AdamW(optimizer_grouped_parameters, lr=cf.lr)#create_finetuning_optimizer(cf, model)
-    num_training_steps = cf.n_epochs * math.ceil(len(train_dataloader))
-    lr_scheduler = get_scheduler(name='linear',
-                                 optimizer=optimizer,
-                                 num_warmup_steps=cf.num_warmup_steps,
-                                 num_training_steps=num_training_steps)
+    training_args = TrainingArguments(
+        output_dir=out_path,
+        num_train_epochs=cf.n_epochs,
+        per_device_train_batch_size=cf.train_bs,
+        per_device_eval_batch_size=cf.eval_bs,
+        warmup_steps=cf.num_warmup_steps,
+        weight_decay=cf.weight_decay,
+        save_strategy="no",
+        learning_rate=cf.lr,
+        # logging_strategy='steps',
+        # logging_steps=500,
+        label_names=['pos', 'neg']
+    )
 
-    ## training loop
+    trainer = MultitaskTrainer(
+        model=model,
+        data_collator=data_collator,
+        args=training_args,
+        train_dataset=train_dataset,
+        eval_dataset=test_dataset,
+        tokenizer=tokenizer,
+        compute_metrics=compute_metrics
+    )
 
-    progress_bar = tqdm(range(num_training_steps))
-    model.to(device)
+    trainer.train()
 
-    f1 = evaluate.load('f1')
+    trainer.save_model(output_dir=out_path)
 
-    for epoch in range(1, cf.n_epochs + 1):
-        print('Epoch', epoch)
-        model.train()
-        for step, batch in enumerate(train_dataloader):
-            batch = {
-                "input_ids": batch["input_ids"].to(device),
-                "attention_mask": batch["attention_mask"].to(device),
-                "labels": {k: v.to(device) for k, v in batch["labels"].items()}
-            }
+    train_metrics = trainer.evaluate(eval_dataset=train_dataset, metric_key_prefix="train")
+    trainer.log_metrics("train", train_metrics)
+    trainer.save_metrics("train", train_metrics)
 
-            model_output = model(**batch)
-            loss = model_output.loss
+    test_metrics = trainer.evaluate(eval_dataset=test_dataset, metric_key_prefix="test")
 
-            loss.backward()
-            optimizer.step()
-            lr_scheduler.step()
-            optimizer.zero_grad()
-
-            progress_bar.update(1)
-            # torch.nn.utils.clip_grad_norm_(parameters=model.parameters(), max_norm=cf.max_grad_norm)
-
-        print("Loss", loss.item())
-
-        model.eval()
-
-        with torch.no_grad():
-            for batch in eval_dataloader:
-                batch = {
-                    "input_ids": batch["input_ids"].to(device),
-                    "attention_mask": batch["attention_mask"].to(device),
-                    "labels": {k: v.to(device) for k, v in batch["labels"].items()}
-                }
-
-                model_output = model(**batch)
-
-                for task in batch['labels']:
-                    predictions = model_output.logits[task].argmax(dim=-1)
-                    references = batch['labels'][task]
-                    f1.add_batch(predictions=predictions, references=references)
-
-        eval_accuracy = f1.compute()
-        print(f'Eval f1 = {eval_accuracy["f1"]}')
-
-    model.save_pretrained(out_path)
-
-    train_res = evaluate_model(model, train_dataloader, 'train', get_eval_metrics(), get_eval_metrics(),
-                               get_eval_metrics())
-    test_res = evaluate_model(model, eval_dataloader, 'test', get_eval_metrics(), get_eval_metrics(),
-                              get_eval_metrics())
-
-    metrics_out_path = os.path.join(out_path, 'all_results.json')
-    with open(metrics_out_path, 'w+') as out_file:
-        json.dump(train_res | test_res, out_file)
+    trainer.log_metrics("test", test_metrics)
+    trainer.save_metrics("test", test_metrics)
 
 
 if __name__ == '__main__':
