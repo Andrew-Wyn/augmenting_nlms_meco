@@ -28,8 +28,8 @@ def cross_validation(cf, dataset, tokenizer, DEVICE, writer, partial_finetuning,
 
     splits = folds.split(np.zeros(dataset.num_rows))
 
-    loss_tr_mean = defaultdict(lambda: 0)
-    loss_ts_mean = defaultdict(lambda: 0)
+    loss_tr_mean = defaultdict(list)
+    loss_ts_mean = defaultdict(list)
 
     LOGGER.info(f"Started Cross-Validation, with K = {k_folds}")
 
@@ -59,15 +59,15 @@ def cross_validation(cf, dataset, tokenizer, DEVICE, writer, partial_finetuning,
         trainer.train()
 
         for key, metric in trainer.tester.train_metrics.items():
-            loss_tr_mean[key] += metric
+                loss_tr_mean[key].append(metric)
 
         for key, metric in trainer.tester.test_metrics.items():
-            loss_ts_mean[key] += metric
+                loss_ts_mean[key].append(metric)
 
     for key in loss_tr_mean:
-        loss_tr_mean[key] /= k_folds
+        loss_tr_mean[key] = np.nanmean(loss_tr_mean[key])
 
     for key in loss_ts_mean:
-        loss_ts_mean[key] /= k_folds
+        loss_ts_mean[key] = np.nanmean(loss_ts_mean[key])
 
     return loss_tr_mean, loss_ts_mean

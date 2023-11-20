@@ -89,5 +89,10 @@ class GazeTester(Tester):
                 # remove the -100 elements from the vectors
                 not_masked_elements_t = gold_labels_flattened != -100
 
-                metrics["spearman_"+t] = spearmanr(model_ouput_logits_flattened[not_masked_elements_t],
-                                                   gold_labels_flattened[not_masked_elements_t]).statistic
+                sp = spearmanr(model_ouput_logits_flattened[not_masked_elements_t],
+                                                   gold_labels_flattened[not_masked_elements_t])
+                
+                if sp.pvalue < 0.05:
+                    metrics["spearman_"+t] = sp.statistic
+                else:
+                    metrics["spearman_"+t] = np.nan

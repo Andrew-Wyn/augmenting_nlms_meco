@@ -184,7 +184,7 @@ class Prober():
                     loss_tr_mean["acc_corr"].append(stat_tr.statistic)
                 
                 if stat_ts.pvalue < 0.05:
-                loss_ts_mean["acc_corr"].append(stat_ts.statistic)
+                    loss_ts_mean["acc_corr"].append(stat_ts.statistic)
 
         for k in loss_tr_mean.keys():
             loss_tr_mean[k] = np.mean(loss_tr_mean[k])
