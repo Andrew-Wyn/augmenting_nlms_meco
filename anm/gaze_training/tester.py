@@ -2,6 +2,9 @@ import torch
 from anm.utils import LOGGER
 from abc import ABC
 from collections import defaultdict
+import numpy as np
+from scipy.stats import spearmanr
+
 
 class Tester(ABC):
     """
@@ -46,8 +49,16 @@ class GazeTester(Tester):
 
         metrics_ = defaultdict(lambda: 0)
 
+        # compute the spearman correlation
+        model_ouput_logits = defaultdict(list)
+        gold_labels = defaultdict(list)
+
         with torch.no_grad():
             for batch in dl:
+                # add current batch to gold_labels
+                for k, v in batch["labels"].items():
+                    gold_labels[k].append(v)
+
                 batch = {
                     "input_ids": batch["input_ids"].to(self.device),
                     "attention_mask": batch["attention_mask"].to(self.device),
@@ -62,7 +73,21 @@ class GazeTester(Tester):
                 for t, l in model_output.mae_loss.items():
                     metrics_["mae_"+t] += l.to("cpu").numpy()
 
+                # collect model output logits
+                for k, v in model_output.logits.items():
+                    model_ouput_logits[k].append(v.to("cpu"))
+
             num_batches = len(dl)
             
             for t, l in metrics_.items():
                 metrics[t] = l/num_batches
+
+            for t in gold_labels.keys():
+                model_ouput_logits_flattened = np.concatenate([a.numpy() for a in model_ouput_logits[t]]).ravel()
+                gold_labels_flattened = np.concatenate([a.numpy() for a in gold_labels[t]]).ravel()
+
+                # remove the -100 elements from the vectors
+                not_masked_elements_t = gold_labels_flattened != -100
+
+                metrics["spearman_"+t] = spearmanr(model_ouput_logits_flattened[not_masked_elements_t],
+                                                   gold_labels_flattened[not_masked_elements_t]).statistic

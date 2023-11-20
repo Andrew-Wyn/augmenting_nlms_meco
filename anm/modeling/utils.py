@@ -21,11 +21,11 @@ def mask_loss(b_output, b_target, target_pad):
 def gaze_multitask_forward(tasks, classifiers, sequence_output, labels):
     loss = {}
     mae_loss = {}
-    logits = list()
+    logits = {}
 
     for task in tasks:
         task_logits = classifiers[task](sequence_output)
-        logits.append(task_logits)
+        logits[task] = task_logits
         if labels[task] is not None:
             task_labels = labels[task].to(task_logits.device)
             # TODO: mask out the output associated with not-first-token of a word

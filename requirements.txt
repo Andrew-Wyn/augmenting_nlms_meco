@@ -11,3 +11,4 @@ tensorflow
 datasets
 accelerate
 seaborn
+scipy
