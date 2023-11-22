@@ -37,6 +37,8 @@ def main():
                         help=f'Relative path of dataset folder, containing the .csv file')
     parser.add_argument("-p", "--partial-finetuning", dest="partial_finetuning", default=False, action='store_true',
                         help=f'partial finetuning')
+    parser.add_argument('-f', '--final-retraining', dest='final_retraining', default=True,
+                       help=f'Execute and save the training on the model using the whole dataset')
 
     # Read the script's argumenents
     args = parser.parse_args()
@@ -51,6 +53,10 @@ def main():
     # check if the output directory exists, if not create it!
     if not os.path.exists(args.output_dir):
         os.makedirs(args.output_dir)
+
+    # Avoid computing again
+    # if os.path.exists(os.path.join(args.output_dir, 'finetuning_results.json')):
+    #     return
     
     tf_logs_dir = args.output_dir+"/tf_logs"
 
@@ -71,25 +77,30 @@ def main():
 
     # --- Final Retraining
 
-    dataloader = minmax_preprocessing(cf, gaze_dataset, tokenizer)
+    if args.final_retraining:
+        dataloader = minmax_preprocessing(cf, gaze_dataset, tokenizer)
 
-    model = load_model_from_hf(cf.model_type, cf.model_name, cf.pretrained, args.partial_finetuning)
+        model = load_model_from_hf(cf.model_type, cf.model_name, cf.pretrained, args.partial_finetuning)
 
-    # optimizer
-    optim = create_finetuning_optimizer(cf, model)
+        # optimizer
+        optim = create_finetuning_optimizer(cf, model)
+    
+        # scheduler
+        scheduler = create_scheduler(cf, optim, dataloader)
+    
+        # trainer
+        trainer = GazeTrainer(cf, model, dataloader, optim, scheduler, f"Final-retraining",
+                                    DEVICE, writer=writer, test_dl=None)
+        trainer.train(True, args.output_dir)
+    
+        LOGGER.info ("Saving metrics...")
+        # save cv and final train metrics
+        with open(f"{args.output_dir}/finetuning_results.json", 'w') as f:
+            json.dump({"losses_tr" : loss_tr_mean, "losses_ts" : loss_ts_mean, "final_training" : dict(trainer.tester.train_metrics)}, f)
 
-    # scheduler
-    scheduler = create_scheduler(cf, optim, dataloader)
-
-    # trainer
-    trainer = GazeTrainer(cf, model, dataloader, optim, scheduler, f"Final-retraining",
-                                DEVICE, writer=writer, test_dl=None)
-    trainer.train(True, args.output_dir)
-
-    LOGGER.info ("Saving metrics...")
-    # save cv and final train metrics
-    with open(f"{args.output_dir}/finetuning_results.json", 'w') as f:
-        json.dump({"losses_tr" : loss_tr_mean, "losses_ts" : loss_ts_mean, "final_training" : dict(trainer.tester.train_metrics)}, f)
+    else:
+         with open(f"{args.output_dir}/finetuning_results.json", 'w') as f:
+            json.dump({"losses_tr" : loss_tr_mean, "losses_ts" : loss_ts_mean}, f)
 
 
 if __name__ == "__main__":
