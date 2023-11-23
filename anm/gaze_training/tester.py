@@ -4,7 +4,7 @@ from abc import ABC
 from collections import defaultdict
 import numpy as np
 from scipy.stats import spearmanr
-from sklearn.metrics import accuracy_score
+from sklearn.metrics import accuracy_score, r2_score
 
 
 def binary_accuracy(targets, predicted, thr):
@@ -98,6 +98,9 @@ class GazeTester(Tester):
 
                 # remove the -100 elements from the vectors
                 not_masked_elements_t = gold_labels_flattened != -100
+
+                metrics["r2"] = r2_score(gold_labels_flattened[not_masked_elements_t],
+                                        model_ouput_logits_flattened[not_masked_elements_t])
 
                 if t in ["refix", "reread", "skip"]: # binary features
                     metrics["acc_corr_"+t] = binary_accuracy(gold_labels_flattened[not_masked_elements_t].astype(int),
