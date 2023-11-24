@@ -7,3 +7,6 @@
 [submodule "attn_correlation/modules/alti"]
 	path = anm/attn_correlation/modules/alti
 	url = git@github.com:lucadinidue/alti.git
+[submodule "anm/attn_correlation/modules/DIG"]
+	path = anm/attn_correlation/modules/DIG
+	url = git@github.com:Andrew-Wyn/DIG.git
