@@ -14,6 +14,10 @@ import numpy as np
 import torch
 import os
 
+from anm.attn_correlation.modules.DIG.roberta_helper import *
+from anm.attn_correlation.modules.DIG import monotonic_paths
+from anm.attn_correlation.modules.DIG.dig import DiscretetizedIntegratedGradients
+from anm.attn_correlation.modules.DIG.attributions import *
 
 class TokenContributionExtractor(ABC):
 
@@ -214,6 +218,72 @@ class AttentionMatrixExtractor(TokenContributionExtractor, ABC):
         layer_attention_matrix = layer_attention_matrix.detach().squeeze()
         avg_attention_matrix = torch.mean(layer_attention_matrix, dim=0)
         return avg_attention_matrix
+
+
+class DIGAttrExtractor(TokenContributionExtractor, ABC):
+
+    def __init__(self, ref_token_id, sep_token_id, cls_token_id, word_idx_map, word_features, adj, model_name: str, layer: int, rollout: bool, aggregation_method: str, random_init: bool = False):
+        super().__init__(model_name, layer, rollout, aggregation_method, random_init)
+
+        self.word_idx_map, self.word_features, self.adj = word_idx_map, word_features, adj
+
+        self.ef_token_id, self.sep_token_id, self.cls_token_id = ref_token_id, sep_token_id, cls_token_id
+        
+        self.mask_token_emb = get_mask_token_emb(self.device)
+
+    def _load_model(self, model_name: str):
+        config = AutoConfig.from_pretrained(model_name)
+        if not self.random_init:
+            model = AutoModelForMaskedLM.from_pretrained(model_name, output_attentions=True)
+        else:
+            config.output_attentions = True
+            model = AutoModelForMaskedLM.from_config(config) #, output_attentions=True)
+        model.to(self.device)
+        return model
+
+    def compute_sentence_contributions(self, tokenized_text):
+        tokenized_text.to(self.device) # input_ids
+
+        # prepare the input text, following the original DIG procedure...
+        input_ids		= tokenized_text["input_ids"]	# construct input token ids
+        ref_input_ids	= [self.cls_token_id] + [self.ref_token_id] * (len(text_ids)-2) + [self.sep_token_id]	# construct reference token ids
+
+        position_ids, ref_position_ids	= construct_input_ref_pos_id_pair(input_ids, device)
+        type_ids, ref_type_ids			= construct_input_ref_token_type_pair(input_ids, device)
+        attention_mask					= construct_attention_mask(input_ids)
+
+        (input_embed, ref_input_embed), (position_embed, ref_position_embed), (type_embed, ref_type_embed) = \
+                    construct_sub_embedding(self.model, input_ids, ref_input_ids, position_ids, ref_position_ids, type_ids, ref_type_ids)
+        
+        scaled_features 		= monotonic_paths.scale_inputs(input_ids.squeeze().tolist(), ref_input_ids.squeeze().tolist(),\
+                                    device, (self.word_idx_map, self.word_features, self.adj), steps=30, factor=0, strategy="greedy")
+
+        inputs					= [scaled_features, input_ids, ref_input_ids, input_embed, ref_input_embed, position_embed, \
+											ref_position_embed, type_embed, ref_type_embed, attention_mask]
+
+        def ff(input_embed, attention_mask=None, position_embed=None, type_embed=None, return_all_logits=False):
+
+            embeds	= input_embed + position_embed + type_embed
+            embeds	= model.roberta.embeddings.dropout(model.roberta.embeddings.LayerNorm(embeds))
+            pred	= predict(model, embeds, attention_mask=attention_mask)
+
+            if return_all_logits:
+                return pred
+            else:
+                return pred.max(1).values
+    
+        attr_func = DiscretetizedIntegratedGradients(ff)
+
+        inp = [x.to(device) if x is not None else None for x in inputs]
+        scaled_features, _, _, input_embed, _, position_embed, _, type_embed, _, attention_mask = inp
+
+        # compute attribution
+        attr = run_dig_explanation(attr_func, scaled_features, position_embed, type_embed, attention_mask, (2**0)*(30+1)+1)
+
+        print(attr)
+        exit()
+
+        return attr
 
 
 class EyeTrackingDataLoader:
