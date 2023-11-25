@@ -14,10 +14,51 @@ import numpy as np
 import torch
 import os
 
-from anm.attn_correlation.modules.DIG.roberta_helper import *
 from anm.attn_correlation.modules.DIG import monotonic_paths
 from anm.attn_correlation.modules.DIG.dig import DiscretetizedIntegratedGradients
 from anm.attn_correlation.modules.DIG.attributions import *
+from sklearn.neighbors import kneighbors_graph
+
+
+# ROBERTA HELPER FROM DIG SUBMODULE
+
+def construct_input_ref_pair(tokenizer, text, ref_token_id, sep_token_id, cls_token_id, device):
+	text_ids		= tokenizer.encode(text, add_special_tokens=False, truncation=True)
+	input_ids		= [cls_token_id] + text_ids + [sep_token_id]	# construct input token ids
+	ref_input_ids	= [cls_token_id] + [ref_token_id] * len(text_ids) + [sep_token_id]	# construct reference token ids
+
+	return torch.tensor([input_ids], device=device), torch.tensor([ref_input_ids], device=device)
+
+
+def construct_input_ref_pos_id_pair(model, input_ids, device):
+	seq_length			= input_ids.size(1)
+	position_ids 		= model.roberta.embeddings.position_ids[:,0:seq_length].to(device)
+	ref_position_ids	= model.roberta.embeddings.position_ids[:,0:seq_length].to(device)
+
+	return position_ids, ref_position_ids
+
+
+def construct_input_ref_token_type_pair(input_ids, device):
+	seq_len				= input_ids.size(1)
+	token_type_ids		= torch.tensor([[0] * seq_len], dtype=torch.long, device=device)
+	ref_token_type_ids	= torch.zeros_like(token_type_ids, dtype=torch.long, device=device)
+	return token_type_ids, ref_token_type_ids
+
+
+def construct_sub_embedding(model, input_ids, ref_input_ids, position_ids, ref_position_ids, type_ids, ref_type_ids):
+	input_embeddings				= model.roberta.embeddings.word_embeddings(input_ids)
+	ref_input_embeddings			= model.roberta.embeddings.word_embeddings(ref_input_ids)
+	input_position_embeddings		= model.roberta.embeddings.position_embeddings(position_ids)
+	ref_input_position_embeddings	= model.roberta.embeddings.position_embeddings(ref_position_ids)
+	input_type_embeddings			= model.roberta.embeddings.token_type_embeddings(type_ids)
+	ref_input_type_embeddings		= model.roberta.embeddings.token_type_embeddings(ref_type_ids)
+
+	return 	(input_embeddings, ref_input_embeddings), \
+			(input_position_embeddings, ref_input_position_embeddings), \
+			(input_type_embeddings, ref_input_type_embeddings)
+
+# -----
+
 
 class TokenContributionExtractor(ABC):
 
@@ -220,16 +261,38 @@ class AttentionMatrixExtractor(TokenContributionExtractor, ABC):
         return avg_attention_matrix
 
 
+# DIG attr score function
+def KNN_graph_extraction(model, tokenizer, knn_nbrs=200, procs=5):
+	"""
+		Compute the KNN graph for the tokens embedding space
+	"""
+
+	device = torch.device("cpu")
+
+	print('=========== KNN Computation ===========')
+
+	word_features		= model.roberta.embeddings.word_embeddings.weight.cpu().detach().numpy()
+	word_idx_map		= tokenizer.get_vocab()
+	# Compute the (weighted) graph of k-Neighbors for points in word_features -> the single token's ids.
+	adj					= kneighbors_graph(word_features, knn_nbrs, mode='distance', n_jobs=procs)
+
+	print("=========== DONE! ===========")
+
+	return word_idx_map, word_features, adj
+
+
 class DIGAttrExtractor(TokenContributionExtractor, ABC):
 
-    def __init__(self, ref_token_id, sep_token_id, cls_token_id, word_idx_map, word_features, adj, model_name: str, layer: int, rollout: bool, aggregation_method: str, random_init: bool = False):
+    def __init__(self, tokenizer, model_name: str, layer: int, rollout: bool, aggregation_method: str, random_init: bool = False):
         super().__init__(model_name, layer, rollout, aggregation_method, random_init)
+
+        word_idx_map, word_features, adj = KNN_graph_extraction(self.model, tokenizer)
 
         self.word_idx_map, self.word_features, self.adj = word_idx_map, word_features, adj
 
-        self.ef_token_id, self.sep_token_id, self.cls_token_id = ref_token_id, sep_token_id, cls_token_id
+        self.ef_token_id, self.sep_token_id, self.cls_token_id = tokenizer.pad_token_id, tokenizer.sep_token_id, tokenizer.cls_token_id
         
-        self.mask_token_emb = get_mask_token_emb(self.device)
+        self.mask_token_emb = self.model.roberta.embeddings.word_embeddings(torch.tensor([tokenizer.mask_token_id], device=device))
 
     def _load_model(self, model_name: str):
         config = AutoConfig.from_pretrained(model_name)
@@ -246,11 +309,11 @@ class DIGAttrExtractor(TokenContributionExtractor, ABC):
 
         # prepare the input text, following the original DIG procedure...
         input_ids		= tokenized_text["input_ids"]	# construct input token ids
-        ref_input_ids	= [self.cls_token_id] + [self.ref_token_id] * (len(text_ids)-2) + [self.sep_token_id]	# construct reference token ids
+        ref_input_ids	= [self.cls_token_id] + [self.ref_token_id] * (len(input_ids)-2) + [self.sep_token_id]	# construct reference token ids
 
-        position_ids, ref_position_ids	= construct_input_ref_pos_id_pair(input_ids, device)
+        position_ids, ref_position_ids	= construct_input_ref_pos_id_pair(self.model, input_ids, device)
         type_ids, ref_type_ids			= construct_input_ref_token_type_pair(input_ids, device)
-        attention_mask					= construct_attention_mask(input_ids)
+        attention_mask					= torch.ones_like(input_ids)
 
         (input_embed, ref_input_embed), (position_embed, ref_position_embed), (type_embed, ref_type_embed) = \
                     construct_sub_embedding(self.model, input_ids, ref_input_ids, position_ids, ref_position_ids, type_ids, ref_type_ids)
@@ -264,8 +327,8 @@ class DIGAttrExtractor(TokenContributionExtractor, ABC):
         def ff(input_embed, attention_mask=None, position_embed=None, type_embed=None, return_all_logits=False):
 
             embeds	= input_embed + position_embed + type_embed
-            embeds	= model.roberta.embeddings.dropout(model.roberta.embeddings.LayerNorm(embeds))
-            pred	= predict(model, embeds, attention_mask=attention_mask)
+            embeds	= self.model.roberta.embeddings.dropout(self.model.roberta.embeddings.LayerNorm(embeds))
+            pred	= self.model(inputs_embeds=embeds, attention_mask=attention_mask)[0]
 
             if return_all_logits:
                 return pred

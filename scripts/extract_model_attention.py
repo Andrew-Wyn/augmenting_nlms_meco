@@ -8,9 +8,6 @@ from anm.attn_correlation.utils import *
 from transformers import AutoTokenizer
 import pandas as pd
 import argparse
-import torch
-
-import anm.attn_correlation.modules.DIG.monotonic_paths
 
 
 def get_model_path(language_mode, training_mode, language, finetuned_models_dir, user_id=None):
@@ -61,18 +58,8 @@ def extract_attention(method, gaze_dataset, model_name, out_path, layer, rollout
     elif method == 'alti':
         attn_extractor = AltiContributionExtractor(model_name, layer, rollout, 'first', random_init)
     elif method == 'dig':
-        word_idx_map, word_features, adj = KNN_graph_extraction(tokenizer)
 
-        ref_token_id = tokenizer.pad_token_id # DIG MODIFICATION ?: tokenizer.mask_token_id mask instead pad token 
-        sep_token_id = tokenizer.sep_token_id
-        cls_token_id = tokenizer.cls_token_id
-
-        attn_extractor = DIGAttrExtractor(ref_token_id,
-                                          sep_token_id,
-                                          cls_token_id,
-                                          word_idx_map,
-                                          word_features, 
-                                          adj, 
+        attn_extractor = DIGAttrExtractor(tokenizer,
                                           model_name, 
                                           layer, 
                                           rollout, 
@@ -84,27 +71,6 @@ def extract_attention(method, gaze_dataset, model_name, out_path, layer, rollout
     sentences_contribs = attn_extractor.get_contributions(sentence_alignment_dict)
 
     save_dictionary(sentences_contribs, out_path)
-
-
-# DIG attr score function
-def KNN_graph_extraction(tokenizer, knn_nbrs=200, procs=5):
-	"""
-		Compute the KNN graph for the tokens embedding space
-	"""
-
-	device = torch.device("cpu")
-
-	print('=========== KNN Computation ===========')
-
-	word_features		= get_word_embeddings().cpu().detach().numpy()
-	word_idx_map		= tokenizer.get_vocab()
-	# Compute the (weighted) graph of k-Neighbors for points in word_features -> the single token's ids.
-	adj					= kneighbors_graph(word_features, knn_nbrs, mode='distance', n_jobs=procs)
-
-	print("=========== DONE! ===========")
-
-	return word_idx_map, word_features, adj
-
 
 def main():
     parser = argparse.ArgumentParser()
