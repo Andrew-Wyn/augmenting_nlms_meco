@@ -81,12 +81,14 @@ def main(args):
     # Train datataset
     # Test dataset
     values = {
-        "train_preditcted": [],
+        "train_predicted": [],
         "train_labels": [],
-        "train_corr": [],
+        "train_corr_s": [],
+        "train_corr_p": [],
         "test_predicted": [],
         "test_labels": [],
-        "test_corr": []
+        "test_corr_s": [],
+        "test_corr_p": []
     }
 
     with torch.no_grad():
@@ -95,21 +97,23 @@ def main(args):
             inputs = tokenizer(sample["text"], truncation=True, return_tensors="pt")
             logits = model(**inputs).logits
 
-            values["train_predicted"].append(logits.numpy()[0][0])
+            values["train_predicted"].append(float(logits.numpy()[0][0]))
             values["train_labels"].append(sample["label"])
 
         # compute correlation
-        values["train_corr"] = stats.spearmanr(values["train_predicted"], values["train_labels"]).statistic
+        values["train_corr_s"] = float(stats.spearmanr(values["train_predicted"], values["train_labels"]).statistic)
+        values["train_corr_p"] = float(stats.pearsonr(values["train_predicted"], values["train_labels"]).statistic)
 
         for sample in tqdm(test_dataset):
             inputs = tokenizer(sample["text"], truncation=True, return_tensors="pt")
             logits = model(**inputs).logits
 
-            values["test_predicted"].append(logits.numpy()[0][0])
+            values["test_predicted"].append(float(logits.numpy()[0][0]))
             values["test_labels"].append(sample["label"])
 
         # compute correlation
-        values["test_corr"] = stats.spearmanr(values["test_predicted"], values["test_labels"]).statistic
+        values["test_corr"] = float(stats.spearmanr(values["test_predicted"], values["test_labels"]).statistic)
+        values["test_corr"] = float(stats.pearsonr(values["test_predicted"], values["test_labels"]).statistic)
 
 
     with open(args.output_dir+"/"+'ouput.json', 'w') as f:
