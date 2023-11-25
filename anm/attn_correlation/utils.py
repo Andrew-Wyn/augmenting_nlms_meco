@@ -311,6 +311,8 @@ class DIGAttrExtractor(TokenContributionExtractor, ABC):
         input_ids		= tokenized_text["input_ids"]	# construct input token ids
         ref_input_ids	= [self.cls_token_id] + [self.ref_token_id] * (len(input_ids)-2) + [self.sep_token_id]	# construct reference token ids
 
+        input_ids, ref_input_ids = torch.tensor([input_ids], device=device), torch.tensor([ref_input_ids], device=device)
+
         position_ids, ref_position_ids	= construct_input_ref_pos_id_pair(self.model, input_ids, device)
         type_ids, ref_type_ids			= construct_input_ref_token_type_pair(input_ids, device)
         attention_mask					= torch.ones_like(input_ids)
