@@ -113,9 +113,7 @@ class TokenContributionExtractor(ABC):
             model_input = subwords_alignment_dict[sent_id]['model_input']
             al_ids = subwords_alignment_dict[sent_id]['alignment_ids']
             contribs = self.compute_sentence_contributions(model_input)
-            # cls_contribs = contribs[self.layer][0].tolist()
-            cls_contribs = contribs[0].tolist()
-            agg_contribs = self._aggregate_subtokens_contributions(cls_contribs, al_ids)
+            agg_contribs = self._aggregate_subtokens_contributions(contribs, al_ids)
             sentences_contribs[sent_id] = agg_contribs
 
         return sentences_contribs
@@ -214,7 +212,9 @@ class ValueZeroingContributionExtractor(TokenContributionExtractor, ABC):
 
         rollout_valuezeroing_scores = self._compute_joint_attention(valuezeroing_scores, res=False)
         layer_rollout_valuezeroing_scores = rollout_valuezeroing_scores[self.layer]
-        return layer_rollout_valuezeroing_scores
+
+        cls_contribs = layer_rollout_valuezeroing_scores[0].tolist()
+        return cls_contribs
 
 
 class AltiContributionExtractor(TokenContributionExtractor, ABC):
@@ -237,7 +237,9 @@ class AltiContributionExtractor(TokenContributionExtractor, ABC):
         contributions_mix = compute_joint_attention(normalized_contributions)
         contributions_mix = contributions_mix.detach().cpu().numpy()
         layer_contributions_mix = contributions_mix[self.layer]
-        return layer_contributions_mix
+        
+        cls_contribs = layer_contributions_mix[0].tolist()
+        return cls_contribs
 
 
 class AttentionMatrixExtractor(TokenContributionExtractor, ABC):
@@ -258,7 +260,9 @@ class AttentionMatrixExtractor(TokenContributionExtractor, ABC):
         layer_attention_matrix = model_output['attentions'][self.layer]
         layer_attention_matrix = layer_attention_matrix.detach().squeeze()
         avg_attention_matrix = torch.mean(layer_attention_matrix, dim=0)
-        return avg_attention_matrix
+
+        cls_contribs = avg_attention_matrix[0].tolist()
+        return cls_contribs
 
 
 # DIG attr score function
@@ -297,10 +301,10 @@ class DIGAttrExtractor(TokenContributionExtractor, ABC):
     def _load_model(self, model_name: str):
         config = AutoConfig.from_pretrained(model_name)
         if not self.random_init:
-            model = AutoModelForMaskedLM.from_pretrained(model_name, output_attentions=True)
+            model = AutoModelForSequenceClassification.from_pretrained(model_name, return_dict=False)
         else:
-            config.output_attentions = True
-            model = AutoModelForMaskedLM.from_config(config) #, output_attentions=True)
+            config.output_attentions = False
+            model = AutoModelForSequenceClassification.from_config(config, return_dict=False)
         model.to(self.device)
         return model
 
@@ -308,7 +312,7 @@ class DIGAttrExtractor(TokenContributionExtractor, ABC):
         tokenized_text.to(self.device) # input_ids
 
         # prepare the input text, following the original DIG procedure...
-        input_ids		= tokenized_text["input_ids"]	# construct input token ids
+        input_ids		= tokenized_text["input_ids"][0].tolist()	# construct input token ids
         ref_input_ids	= [self.cls_token_id] + [self.ref_token_id] * (len(input_ids)-2) + [self.sep_token_id]	# construct reference token ids
 
         input_ids, ref_input_ids = torch.tensor([input_ids], device=device), torch.tensor([ref_input_ids], device=device)
@@ -345,10 +349,7 @@ class DIGAttrExtractor(TokenContributionExtractor, ABC):
         # compute attribution
         attr = run_dig_explanation(attr_func, scaled_features, position_embed, type_embed, attention_mask, (2**0)*(30+1)+1)
 
-        print(attr)
-        exit()
-
-        return attr
+        return attr.tolist()
 
 
 class EyeTrackingDataLoader:
