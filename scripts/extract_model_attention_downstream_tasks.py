@@ -63,6 +63,15 @@ def extract_attention(method, gaze_dataset, model_name, out_path, layer, rollout
         attn_extractor = ValueZeroingContributionExtractor(model_name, layer, rollout, 'first', random_init)
     elif method == 'alti':
         attn_extractor = AltiContributionExtractor(model_name, layer, rollout, 'first', random_init)
+    elif method == 'dig':
+
+        attn_extractor = DIGAttrExtractor(tokenizer,
+                                          model_name, 
+                                          layer, 
+                                          rollout, 
+                                          'first', 
+                                          random_init)
+
     else:
         attn_extractor = AttentionMatrixExtractor(model_name, layer, rollout, 'first', random_init)
 
