@@ -80,6 +80,7 @@ def create_dataset(task):
         dataset = read_complexity_dataset(dataset_path)
     elif task == "sentiment_en":
         dataset = load_dataset(dataset_path, cache_dir=CACHE_DIR)
+        dataset = dataset["validation"]
     elif task == "sentiment_it":
         dataset = read_sentiment_it_dataset(dataset_path)
 
@@ -142,7 +143,7 @@ def annotate_dataset(model, tokenizer, dataset, args):
     with torch.no_grad():
 
         for sentence_num, sample in tqdm(enumerate(dataset, 1)):
-            splitted_text = sample["sentence"].split(" ")
+            splitted_text = sample["sentence"].strip().split(" ")
             tokenized_input = tokenizer(splitted_text, 
                                         max_length=128, 
                                         padding=True, 
