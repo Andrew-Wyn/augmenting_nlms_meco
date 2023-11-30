@@ -54,7 +54,6 @@ def extract_attention(method, gaze_dataset, model_name, out_path, layer, rollout
     sentence_alignment_dict = create_subwords_alignment(gaze_dataset, tokenizer, subword_prefix, lowercase)
 
     if 'valuezeroing' in method:
-        print('valuezeroing', rollout)
         attn_extractor = ValueZeroingContributionExtractor(model_name, layer, rollout, 'first', random_init)
     elif method == 'alti':
         attn_extractor = AltiContributionExtractor(model_name, layer, rollout, 'first', random_init)
