@@ -294,8 +294,8 @@ class DIGAttrExtractor(TokenContributionExtractor, ABC):
 
         self.word_idx_map, self.word_features, self.adj = word_idx_map, word_features, adj
 
-        self.ef_token_id, self.sep_token_id, self.cls_token_id = tokenizer.pad_token_id, tokenizer.sep_token_id, tokenizer.cls_token_id
-        
+        self.ref_token_id, self.sep_token_id, self.cls_token_id = tokenizer.pad_token_id, tokenizer.sep_token_id, tokenizer.cls_token_id
+
         self.mask_token_emb = self.model.roberta.embeddings.word_embeddings(torch.tensor([tokenizer.mask_token_id], device=device))
 
     def _load_model(self, model_name: str):
@@ -304,7 +304,8 @@ class DIGAttrExtractor(TokenContributionExtractor, ABC):
             model = AutoModelForSequenceClassification.from_pretrained(model_name, return_dict=False)
         else:
             config.output_attentions = False
-            model = AutoModelForSequenceClassification.from_config(config, return_dict=False)
+            config.return_dict = False
+            model = AutoModelForSequenceClassification.from_config(config)
         model.to(self.device)
         return model
 
