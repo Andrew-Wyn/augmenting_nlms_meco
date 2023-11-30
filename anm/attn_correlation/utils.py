@@ -132,6 +132,66 @@ class ValueZeroingContributionExtractor(TokenContributionExtractor, ABC):
         input_shape = tokenized_text['input_ids'].size()
         batch_size, seq_length = input_shape
 
+        score_matrix = np.ones((self.model.config.num_hidden_layers, seq_length, seq_length))
+        try:
+            layers_modules = self.model.bert.encoder.layer
+        except:
+            layers_modules = self.model.roberta.encoder.layer
+        l = self.layer
+        layer_module = layers_modules[l]
+        for t in range(seq_length):
+            try:
+                extended_blanking_attention_mask: torch.Tensor = self.model.bert.get_extended_attention_mask(
+                    tokenized_text['attention_mask'], input_shape)  # , device=self.device)
+            except:
+                extended_blanking_attention_mask: torch.Tensor = self.model.roberta.get_extended_attention_mask(
+                    tokenized_text['attention_mask'], input_shape)  # , device=self.device)
+
+            with torch.no_grad():
+                layer_outputs = layer_module(org_hidden_states[l].unsqueeze(0),  # previous layer's original output
+                                             attention_mask=extended_blanking_attention_mask,
+                                             output_attentions=False,
+                                             zero_value_index=t,
+                                             )
+
+            hidden_states = layer_outputs[0].squeeze().detach().cpu().numpy()
+            # compute similarity between original and new outputs
+            # cosine
+            x = hidden_states
+            y = org_hidden_states[l + 1].detach().cpu().numpy()
+            distances = cosine_distances(x, y).diagonal()
+
+            score_matrix[l, :, t] = distances
+        valuezeroing_scores = score_matrix / np.sum(score_matrix, axis=-1, keepdims=True)
+
+        if not self.rollout:
+            layer_valuezeroing_scores = valuezeroing_scores[self.layer]
+            return layer_valuezeroing_scores
+
+        rollout_valuezeroing_scores = self._compute_joint_attention(valuezeroing_scores, res=False)
+        layer_rollout_valuezeroing_scores = rollout_valuezeroing_scores[self.layer]
+        return layer_rollout_valuezeroing_scores
+
+
+    
+    def compute_sentence_contributions_old(self, tokenized_text):
+        tokenized_text = {k: v.to(self.device) for k, v in tokenized_text.items()}
+
+        with torch.no_grad():
+            try:
+                outputs = self.model(tokenized_text['input_ids'],
+                                     attention_mask=tokenized_text['attention_mask'],
+                                     token_type_ids=tokenized_text['token_type_ids'],
+                                     output_hidden_states=True, output_attentions=False)
+            except:
+                outputs = self.model(tokenized_text['input_ids'],
+                                     attention_mask=tokenized_text['attention_mask'],
+                                     output_hidden_states=True, output_attentions=False)
+        org_hidden_states = torch.stack(outputs['hidden_states']).squeeze(1)
+
+        input_shape = tokenized_text['input_ids'].size()
+        batch_size, seq_length = input_shape
+
         score_matrix = np.zeros((self.model.config.num_hidden_layers, seq_length, seq_length))
         try:
             layers_modules = self.model.bert.encoder.layer
