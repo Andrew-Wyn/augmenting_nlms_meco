@@ -15,7 +15,7 @@ def _create_senteces_from_data(data, tasks, keep_id=False):
     
     dropping_cols.add("sentence_id")
     
-    word_func = lambda s: [w for w in s["ia"].values.tolist()]
+    word_func = lambda s: [str(w) for w in s["ia"].values.tolist()]
 
     features_func = lambda s: [np.array(s.drop(columns=dropping_cols).iloc[i])
                             for i in range(len(s))]
@@ -26,9 +26,7 @@ def _create_senteces_from_data(data, tasks, keep_id=False):
     sentences = grouped_data.apply(word_func).tolist()
     targets = grouped_data.apply(features_func).tolist()
 
-    
     data_list = []
-
     
     for s_id, s, t in zip(sentences_ids, sentences, targets):
         if keep_id:
