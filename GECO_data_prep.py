@@ -8,10 +8,12 @@ from sklearn.preprocessing import StandardScaler, MinMaxScaler
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 from sklearn.metrics import pairwise_distances_argmin_min
+import random
 
 
 seed_ = 12345
 np.random.seed(seed_)
+random.seed(seed_)
 
 
 def clusterize_user_profiling(reader_grouped_df, gaze_features):
@@ -66,7 +68,7 @@ def clusterize_user_profiling(reader_grouped_df, gaze_features):
 def main():
     df = pd.read_csv("augmenting_nlms_meco_data/geco_monolingual.csv", index_col=0)
 
-    gaze_features = ["WORD_FIRST_FIXATION_DURATION", "WORD_FIRST_RUN_END_TIME", "WORD_FIRST_RUN_START_TIME", "WORD_GAZE_DURATION", "WORD_FIRST_RUN_FIXATION_COUNT", "WORD_FIXATION_COUNT"]
+    gaze_features = ["WORD_FIRST_FIXATION_DURATION", "WORD_FIRST_RUN_END_TIME", "WORD_FIRST_RUN_START_TIME", "WORD_TOTAL_READING_TIME", "WORD_FIRST_RUN_FIXATION_COUNT", "WORD_FIXATION_COUNT"]
     other_features = ["PP_NR", "PART", "TRIAL", "WORD_ID", "WORD"] # trial is the paragraph readed
     df = df[other_features + gaze_features]
 
@@ -94,7 +96,7 @@ def main():
         "PP_NR": "uniform_id",
         "WORD_FIRST_FIXATION_DURATION": "firstfix_dur",
         "WORD_FIRST_RUN_DURATION": "firstrun_dur",
-        "WORD_GAZE_DURATION": "dur",
+        "WORD_TOTAL_READING_TIME": "dur",
         "WORD_FIRST_RUN_FIXATION_COUNT": "firstrun_nfix",
         "WORD_FIXATION_COUNT": "nfix"
     }
